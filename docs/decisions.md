@@ -168,3 +168,19 @@ workspace.
 
 **Why.** The vendors simulate separate companies. Separate projects mean no shared dependencies, code, or secrets, which
 keeps the integration honest.
+
+---
+
+### D-015: Thinking mode is always explicit and off by default
+
+**Date:** 2026-09-11
+
+**Decision.** `reasoning` is a boolean on every model role, defaulting to `false`. There is no "use the model's default"
+option. Enabling it for an Anthropic role is rejected until the Anthropic switch milestone.
+
+**Why.** When a thinking model runs through langchain-ollama without an explicit setting, its raw `<think>` blocks can
+end up in the response content. In Deskpilot that content can become a reply to a customer. Explicit settings also make
+latency and token use predictable.
+
+**Consequences.** Whether the agent benefits from thinking is decided by evals in milestone 12. Anthropic's thinking
+uses a different mechanism (token budgets, temperature constraints) and gets designed with the Anthropic switch.

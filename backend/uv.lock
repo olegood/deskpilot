@@ -248,6 +248,7 @@ name = "deskpilot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "langchain-anthropic" },
     { name = "langchain-core" },
     { name = "langchain-ollama" },
@@ -266,6 +267,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain-anthropic", specifier = ">=1.7.2" },
     { name = "langchain-core", specifier = ">=1.6.2" },
     { name = "langchain-ollama", specifier = ">=1.1.0" },

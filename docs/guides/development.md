@@ -2,7 +2,7 @@
 
 Daily workflow for working on Deskpilot.
 
-> Last verified against: milestone 1, step 1.2.
+> Last verified against: milestone 1, step 1.3.
 
 ## Current layout
 
@@ -14,9 +14,12 @@ deskpilot/
 │   ├── .python-version        # Python 3.13
 │   ├── .env.example           # template for backend/.env (git-ignored)
 │   ├── src/deskpilot/
-│   │   └── config.py          # typed settings
+│   │   ├── config.py          # typed settings
+│   │   └── llm.py             # chat model factory, the only provider-aware module
 │   └── tests/
-│       └── unit/
+│       ├── conftest.py        # shared fixtures, e.g. environment isolation
+│       ├── unit/              # fast, no external services
+│       └── integration/       # real services, skipped by default
 ├── scripts/
 │   └── ollama-serve.sh
 └── docs/
@@ -26,26 +29,32 @@ deskpilot/
 
 Run from `backend/`:
 
-| Task                              | Command                                   |
-|-----------------------------------|-------------------------------------------|
-| Install or update the environment | `uv sync`                                 |
-| Run unit tests                    | `uv run pytest`                           |
-| Run one test file                 | `uv run pytest tests/unit/test_config.py` |
-| Run tests matching a name         | `uv run pytest -k anthropic`              |
-| Run integration tests             | `uv run pytest -m integration`            |
-| Lint                              | `uv run ruff check .`                     |
-| Auto-fix lint issues              | `uv run ruff check . --fix`               |
-| Format                            | `uv run ruff format .`                    |
-| Type check                        | `uv run mypy src`                         |
+| Task                              | Command                                      |
+|-----------------------------------|----------------------------------------------|
+| Install or update the environment | `uv sync`                                    |
+| Run unit tests                    | `uv run pytest`                              |
+| Run one test file                 | `uv run pytest tests/unit/test_config.py`    |
+| Run tests matching a name         | `uv run pytest -k anthropic`                 |
+| Run integration tests             | `uv run pytest -m integration`               |
+| Integration tests with timings    | `uv run pytest -m integration --durations=0` |
+| Lint                              | `uv run ruff check .`                        |
+| Auto-fix lint issues              | `uv run ruff check . --fix`                  |
+| Format                            | `uv run ruff format .`                       |
+| Type check                        | `uv run mypy src`                            |
 
 ## Tests
 
 - **Unit tests** (`tests/unit/`) are fast and need no external services. They run by default.
-- **Integration tests** are marked `@pytest.mark.integration` and need real services such as Ollama or Postgres. They're
-  skipped by default and run with `-m integration`.
+- **Integration tests** (`tests/integration/`) are marked `@pytest.mark.integration` and need real services. They're
+  skipped by default and run with `-m integration`. Currently they need Ollama running (`./scripts/ollama-serve.sh`)
+  with the agent model from `backend/.env` pulled; they fail with a clear message if not.
+- **LLM tests are nondeterministic.** Even at temperature 0, a model can occasionally answer differently. A single
+  integration failure is worth rerunning once; repeated failures are real findings. Graph logic is tested with scripted
+  fake models in unit tests instead (from milestone 1, step 1.5).
 - Async tests need no decorator: `asyncio_mode = "auto"` is set in `pyproject.toml`.
-- Tests must not depend on your local `backend/.env` or shell. Settings tests clear `DESKPILOT_*` variables and pass
-  `_env_file=None`.
+- Unit tests must not depend on your local `backend/.env` or shell. `tests/conftest.py` clears `DESKPILOT_*` variables
+  for every test, and settings in unit tests are built with `_env_file=None`. Integration tests deliberately read
+  `backend/.env`, so they test the model you actually configured.
 
 ## Dependencies
 
@@ -59,12 +68,16 @@ uv remove some-package
 
 Commit `pyproject.toml` and `uv.lock` together. After pulling changes, run `uv sync`.
 
+If you import a package directly, declare it directly, even if another dependency already pulls it in.
+
 ## Code rules
 
 - **Types everywhere.** mypy runs in strict mode on `src/`.
 - **Async for I/O.** Network and database calls are async. Ruff's `ASYNC` rules catch blocking calls inside coroutines.
 - **No secrets in code.** Secrets come from settings, typed as `SecretStr` so they never appear in logs or reprs.
 - **Configuration through settings only.** No hardcoded URLs, model names, or credentials outside `config.py` defaults.
+- **Providers only in `llm.py`.** Other modules get models from `build_chat_model(role)` and never import
+  `langchain_ollama` or `langchain_anthropic`.
 
 ## Definition of done for a step
 

@@ -2,7 +2,7 @@
 
 Sets up a development machine from zero. Follow the steps in order.
 
-> Last verified against: milestone 1, step 1.2.
+> Last verified against: milestone 1, step 1.3.
 
 ## Target machine
 
@@ -79,16 +79,17 @@ options.
 
 ## 6. Verify
 
-From `backend/`:
+From `backend/`, with Ollama running:
 
 ```bash
-uv run pytest
+uv run pytest                     # unit tests
+uv run pytest -m integration      # real model: tool call, tool round trip, token usage
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
 ```
 
-All four should pass with no errors.
+All five should pass with no errors. The integration tests take longer the first time, while the model loads.
 
 ## What should be running
 
@@ -109,4 +110,10 @@ Docker's memory limit, or reduce `OLLAMA_NUM_PARALLEL`. See [the Ollama guide](o
 Check [ollama.com/library](https://ollama.com/library) for the current tag and update `backend/.env`.
 
 **Tests fail with a settings error.** Check your shell for leftover `DESKPILOT_*` variables with `env | grep DESKPILOT`.
-Tests clear these, but other commands will read them.
+Unit tests clear these, but integration tests and other commands read them.
+
+**Integration tests say Ollama is not reachable.** Start `./scripts/ollama-serve.sh` and check
+`DESKPILOT_OLLAMA_BASE_URL` in `backend/.env`.
+
+**An integration test fails once, then passes.** LLM output varies slightly even at temperature 0. Repeated failures of
+the same test are a real problem worth reporting.

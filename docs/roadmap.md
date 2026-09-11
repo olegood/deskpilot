@@ -26,7 +26,8 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **1.1 Toolchain and Ollama.** Homebrew tools, native Ollama with a versioned start script, models pulled.
 - [x] **1.2 Backend skeleton and config.** `.gitignore`, uv project, typed settings with per-role provider switch, unit
   tests, docs.
-- [ ] **1.3 Model factory.** Build a chat model per role; integration smoke test of a real tool call.
+- [x] **1.3 Model factory.** Build a chat model per role; integration smoke tests of a real tool call, tool round trip,
+  and token usage.
 - [ ] **1.4 Postgres and the shop.** Docker Compose, SQLAlchemy models, Alembic migration, seed data.
 - [ ] **1.5 First tool and minimal ReAct graph.** `get_order`, a hand-built LangGraph loop, CLI answering "where is my
   order?"

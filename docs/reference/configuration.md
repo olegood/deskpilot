@@ -2,7 +2,7 @@
 
 All Deskpilot backend settings, defined in `backend/src/deskpilot/config.py`.
 
-> Last verified against: milestone 1, step 1.2.
+> Last verified against: milestone 1, step 1.3.
 
 ## How settings are loaded
 
@@ -32,15 +32,15 @@ Invalid configuration fails at startup, not on first use.
 Three roles are configured independently: `AGENT`, `GUARD`, and `JUDGE`. Each supports these fields, set as
 `DESKPILOT_<ROLE>__<FIELD>`:
 
-| Field               | Type                    | Description                                                                                 |
-|---------------------|-------------------------|---------------------------------------------------------------------------------------------|
-| `PROVIDER`          | `ollama` or `anthropic` | Which provider serves this role.                                                            |
-| `MODEL`             | string                  | Model name, e.g. `qwen3.6:35b` or `claude-sonnet-5`.                                        |
-| `TEMPERATURE`       | 0.0–1.0                 | Sampling temperature.                                                                       |
-| `MAX_OUTPUT_TOKENS` | integer > 0             | Maximum tokens per response.                                                                |
-| `TIMEOUT_S`         | number > 0              | Timeout for one model call, in seconds.                                                     |
-| `NUM_CTX`           | integer ≥ 2048          | Context window. Ollama only; see [silent truncation](../guides/ollama.md#things-that-bite). |
-| `REASONING`         | `true` or `false`       | Enables or disables thinking mode. Unset keeps the model's default.                         |
+| Field               | Type                    | Description                                                                                                                                                |
+|---------------------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `PROVIDER`          | `ollama` or `anthropic` | Which provider serves this role.                                                                                                                           |
+| `MODEL`             | string                  | Model name, e.g. `qwen3.6:35b` or `claude-sonnet-5`.                                                                                                       |
+| `TEMPERATURE`       | 0.0–1.0                 | Sampling temperature.                                                                                                                                      |
+| `MAX_OUTPUT_TOKENS` | integer > 0             | Maximum tokens per response.                                                                                                                               |
+| `TIMEOUT_S`         | number > 0              | HTTP timeout for one model call, in seconds.                                                                                                               |
+| `NUM_CTX`           | integer ≥ 2048          | Context window. Ollama only; see [silent truncation](../guides/ollama.md#things-that-bite).                                                                |
+| `REASONING`         | `true` or `false`       | Thinking mode. Always explicit, see [D-015](../decisions.md#d-015-thinking-mode-is-always-explicit-and-off-by-default). Not yet supported for `anthropic`. |
 
 ### Defaults per role
 
@@ -52,7 +52,18 @@ Three roles are configured independently: `AGENT`, `GUARD`, and `JUDGE`. Each su
 | `MAX_OUTPUT_TOKENS` | 2048          | 256           | 1024          |
 | `TIMEOUT_S`         | 120           | 30            | 300           |
 | `NUM_CTX`           | 32768         | 32768         | 32768         |
-| `REASONING`         | model default | `false`       | model default |
+| `REASONING`         | `false`       | `false`       | `false`       |
+
+### How fields map to providers
+
+| Field               | Ollama (`ChatOllama`)         | Anthropic (`ChatAnthropic`) |
+|---------------------|-------------------------------|-----------------------------|
+| `MODEL`             | `model`                       | `model`                     |
+| `TEMPERATURE`       | `temperature`                 | `temperature`               |
+| `MAX_OUTPUT_TOKENS` | `num_predict`                 | `max_tokens`                |
+| `TIMEOUT_S`         | HTTP client timeout           | `timeout`                   |
+| `NUM_CTX`           | `num_ctx`                     | ignored                     |
+| `REASONING`         | `reasoning` (sent as `think`) | rejected when `true`        |
 
 ## Embeddings
 
@@ -70,5 +81,5 @@ DESKPILOT_AGENT__PROVIDER=anthropic
 DESKPILOT_AGENT__MODEL=claude-sonnet-5
 ```
 
-Startup fails with a clear error if the key is missing, or if the provider is `anthropic` but the model isn't a Claude
-model. That catches a half-finished switch before any LLM call.
+Startup fails with a clear error if the key is missing, if the provider is `anthropic` but the model isn't a Claude
+model, or if `REASONING` is `true`. That catches a half-finished switch before any LLM call.

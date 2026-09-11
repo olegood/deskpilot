@@ -25,12 +25,16 @@ class Provider(StrEnum):
 
 
 class ModelRole(StrEnum):
+    """Each role has its own model settings and can switch provider independently."""
+
     AGENT = "agent"
     GUARD = "guard"
     JUDGE = "judge"
 
 
 class ModelSettings(BaseModel):
+    """How to build one chat model."""
+
     model_config = ConfigDict(frozen=True)
 
     provider: Provider = Provider.OLLAMA
@@ -38,12 +42,12 @@ class ModelSettings(BaseModel):
     temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     max_output_tokens: int = Field(default=2048, gt=0)
     timeout_s: float = Field(default=120.0, gt=0)
-
     # Ollama only. Must be set explicitly: when a prompt exceeds the window, Ollama
     # silently drops the oldest tokens, which removes the system prompt first.
     num_ctx: int = Field(default=32_768, ge=2_048)
-    # Thinking mode. None keeps the model's own default.
-    reasoning: bool | None = None
+    # Thinking mode, always explicit. Leaving it unset lets thinking models put raw
+    # <think> blocks into the response content, which could reach customers.
+    reasoning: bool = False
 
     @model_validator(mode="after")
     def _model_matches_provider(self) -> Self:
@@ -51,6 +55,15 @@ class ModelSettings(BaseModel):
             raise ValueError(
                 f"provider is anthropic but model {self.model!r} is not a Claude model; "
                 "set the MODEL variable for this role too"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _reasoning_supported(self) -> Self:
+        if self.provider is Provider.ANTHROPIC and self.reasoning:
+            raise ValueError(
+                "reasoning is not supported for anthropic yet; it arrives with the "
+                "Anthropic switch milestone"
             )
         return self
 
@@ -81,7 +94,9 @@ class Settings(BaseSettings):
 
     agent: ModelSettings = ModelSettings(model="qwen3.6:35b")
     guard: ModelSettings = ModelSettings(
-        model="qwen3.6:35b", max_output_tokens=256, timeout_s=30.0, reasoning=False
+        model="qwen3.6:35b",
+        max_output_tokens=256,
+        timeout_s=30.0,
     )
     judge: ModelSettings = ModelSettings(
         model="gpt-oss:20b",
