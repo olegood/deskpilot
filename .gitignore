@@ -1,0 +1,49 @@
+# ── Secrets ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Python / uv ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ── Node / pnpm / Vite ───────────────────────────────────
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+.vite/
+
+# ── Playwright ───────────────────────────────────────────
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+
+# ── Deskpilot runtime output ─────────────────────────────
+**/traces/
+**/evals/runs/
+*.log
+
+# ── Local databases ──────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+
+# ── OS / editors ─────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
