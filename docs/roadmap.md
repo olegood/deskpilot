@@ -28,7 +28,8 @@ Each milestone ends with something runnable, tested, and documented.
   tests, docs.
 - [x] **1.3 Model factory.** Build a chat model per role; integration smoke tests of a real tool call, tool round trip,
   and token usage.
-- [ ] **1.4 Postgres and the shop.** Docker Compose, SQLAlchemy models, Alembic migration, seed data.
+- [x] **1.4 Postgres and the shop.** Docker Compose, SQLAlchemy models, Alembic migration, deterministic seed data,
+  `deskpilot db seed` CLI, integration tests on a separate test database.
 - [ ] **1.5 First tool and minimal ReAct graph.** `get_order`, a hand-built LangGraph loop, CLI answering "where is my
   order?"
 - [ ] **1.6 Wrap-up.** README and docs pass.

@@ -1,0 +1,30 @@
+# Local infrastructure for Deskpilot development.
+# Ollama is deliberately not here: it runs natively for GPU access (see docs/decisions.md, D-003).
+# Usage (from the repo root): docker compose up -d
+
+name: deskpilot
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deskpilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the repo-root .env file}
+      POSTGRES_DB: deskpilot
+    ports:
+      # Loopback only: the database is not reachable from your network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # PostgreSQL 18+ images keep data under /var/lib/postgresql/<version>/docker.
+      - postgres-data:/var/lib/postgresql
+      # Scripts here run once, on the first start with an empty volume.
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U deskpilot -d deskpilot" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

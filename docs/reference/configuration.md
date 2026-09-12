@@ -2,7 +2,7 @@
 
 All Deskpilot backend settings, defined in `backend/src/deskpilot/config.py`.
 
-> Last verified against: milestone 1, step 1.3.
+> Last verified against: milestone 1, step 1.4.
 
 ## How settings are loaded
 
@@ -70,6 +70,29 @@ Three roles are configured independently: `AGENT`, `GUARD`, and `JUDGE`. Each su
 | Variable                      | Default            | Description                                                                      |
 |-------------------------------|--------------------|----------------------------------------------------------------------------------|
 | `DESKPILOT_EMBEDDINGS__MODEL` | `nomic-embed-text` | Embedding model. Always served by Ollama, since Anthropic has no embeddings API. |
+
+## Database
+
+| Variable                        | Default      | Description                                                                                |
+|---------------------------------|--------------|--------------------------------------------------------------------------------------------|
+| `DESKPILOT_DATABASE__PASSWORD`  | **required** | PostgreSQL password. Must match `POSTGRES_PASSWORD` in the repo-root `.env`. Never logged. |
+| `DESKPILOT_DATABASE__HOST`      | `127.0.0.1`  | PostgreSQL host.                                                                           |
+| `DESKPILOT_DATABASE__PORT`      | `5432`       | PostgreSQL port.                                                                           |
+| `DESKPILOT_DATABASE__NAME`      | `deskpilot`  | Database name. Integration tests use `<name>_test`.                                        |
+| `DESKPILOT_DATABASE__USER`      | `deskpilot`  | Database user.                                                                             |
+| `DESKPILOT_DATABASE__POOL_SIZE` | `5`          | Connections kept open per process.                                                         |
+| `DESKPILOT_DATABASE__ECHO_SQL`  | `false`      | Log every SQL statement. Useful for debugging queries.                                     |
+
+Deskpilot connects with the async psycopg 3 driver (`postgresql+psycopg`). See
+the [database guide](../guides/database.md).
+
+## Repo-root `.env` (Docker Compose)
+
+Separate from `backend/.env`, and read only by Docker Compose.
+
+| Variable            | Description                                                                                                                                    |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| `POSTGRES_PASSWORD` | Password for the `deskpilot` database user. Required; Compose refuses to start without it. Only applied when the data volume is first created. |
 
 ## Switching a role to Anthropic
 

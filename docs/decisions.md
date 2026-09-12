@@ -184,3 +184,55 @@ latency and token use predictable.
 
 **Consequences.** Whether the agent benefits from thinking is decided by evals in milestone 12. Anthropic's thinking
 uses a different mechanism (token budgets, temperature constraints) and gets designed with the Anthropic switch.
+
+
+---
+
+### D-016: psycopg 3 is the only PostgreSQL driver
+
+**Date:** 2026-09-11
+
+**Decision.** SQLAlchemy connects with `postgresql+psycopg` (psycopg 3, async), not asyncpg.
+
+**Why.** LangGraph's `AsyncPostgresSaver` is built on psycopg 3. Using the same driver for application data and
+checkpoints means one set of connection behaviors, errors, and settings to understand.
+
+---
+
+### D-017: Schema conventions
+
+**Date:** 2026-09-11
+
+**Decision.** Money is integer cents. Timestamps are timezone-aware. Enums are stored as strings with CHECK constraints,
+not native PostgreSQL enums. Constraint names come from a naming convention. Relationships use `lazy="raise"`. Orders
+have an internal integer `id` and a public `number`.
+
+**Why.** Floats can't represent money exactly. Native enums need awkward migrations to change. Deterministic constraint
+names keep migrations reliable. In async SQLAlchemy an implicit lazy load fails at runtime, so `lazy="raise"` turns a
+subtle bug into an immediate, clear error. Public order numbers keep internal IDs out of conversations with customers
+and the model.
+
+---
+
+### D-018: Integration tests use a separate database, migrated from scratch
+
+**Date:** 2026-09-11
+
+**Decision.** Integration tests run against `deskpilot_test`, created by a Compose init script. Each test run downgrades
+it to an empty schema and upgrades it to the latest revision, and `alembic check` verifies that models and migrations
+match.
+
+**Why.** Tests never destroy development data, every migration is exercised in both directions, and a model change
+without a migration fails the build.
+
+---
+
+### D-019: No default database password in code
+
+**Date:** 2026-09-11
+
+**Decision.** `DESKPILOT_DATABASE__PASSWORD` has no default. Startup fails with a clear error if it's missing. Compose
+likewise refuses to start without `POSTGRES_PASSWORD`.
+
+**Why.** A default password in a public repository tends to end up in places it shouldn't. Requiring it costs one line
+in each `.env` file.

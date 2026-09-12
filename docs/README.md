@@ -10,6 +10,7 @@
 | [Setup guide](guides/setup.md)                        | Setting up a development machine from zero                           |
 | [Ollama guide](guides/ollama.md)                      | Running local models: settings, memory, troubleshooting              |
 | [Development guide](guides/development.md)            | Daily workflow: tests, linting, dependencies, commits                |
+| [Database guide](guides/database.md)                  | PostgreSQL, migrations, schema conventions, seed data                |
 | [Configuration reference](reference/configuration.md) | Every setting and environment variable                               |
 
 ## Where to start
@@ -18,6 +19,7 @@
   the [setup guide](guides/setup.md).
 - **Setting up a machine:** follow the [setup guide](guides/setup.md) top to bottom.
 - **Changing a setting:** see the [configuration reference](reference/configuration.md).
+- **Changing the database schema:** see the [database guide](guides/database.md#changing-the-schema).
 - **Wondering why something is built a certain way:** check the [decisions](decisions.md).
 
 ## Conventions

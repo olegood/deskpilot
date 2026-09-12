@@ -1,7 +1,7 @@
 # Architecture overview
 
 > Describes the target design. Parts not built yet are listed in the [roadmap](../roadmap.md).
-> Last updated: milestone 1.
+> Last updated: milestone 1, step 1.4.
 
 ## What Deskpilot does
 
@@ -131,21 +131,25 @@ the [configuration reference](../reference/configuration.md) for switching.
 
 ## Repository layout
 
-Target layout. Only `backend/` (config and tests), `scripts/`, and `docs/` exist so far.
+Target layout. So far `backend/` has config, the model factory, the database layer, and the CLI; `infra/`, `scripts/`,
+and `docs/` exist too.
 
 ```
 deskpilot/
+├── docker-compose.yml  # local infrastructure
 ├── backend/            # Deskpilot API and agent (uv project)
+│   ├── migrations/     # Alembic
 │   └── src/deskpilot/
 │       ├── api/  auth/  authz/  db/  graph/  tools/  guards/
 │       ├── integrations/   # ShipTrack client, MCP client, token vault
-│       ├── tracing/  llm.py  config.py
+│       ├── tracing/  llm.py  config.py  cli.py
 ├── frontend/           # React + TypeScript (pnpm)
 ├── vendors/
 │   ├── shiptrack/      # fake carrier (separate uv project)
 │   └── paywisp/        # fake payments: auth_server/ and mcp_server/
 ├── evals/
 ├── e2e/                # Playwright
+├── infra/              # infrastructure config, e.g. PostgreSQL init scripts
 ├── scripts/            # developer scripts, e.g. ollama-serve.sh
 └── docs/
 ```

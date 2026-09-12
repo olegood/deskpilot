@@ -5,14 +5,21 @@ description = "Production-style AI support agent for the fictional Acme Gear sho
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
+    "alembic>=1.20.0",
     "httpx>=0.28.1",
     "langchain-anthropic>=1.7.2",
-    "langchain-core>=1.6.2",
+    "langchain-core>=1.6.3",
     "langchain-ollama>=1.1.0",
     "langgraph>=1.2.11",
+    "psycopg[binary]>=3.3.5",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "typer>=0.27.2",
 ]
+
+[project.scripts]
+deskpilot = "deskpilot.cli:app"
 
 [build-system]
 requires = ["hatchling"]

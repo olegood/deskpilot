@@ -96,6 +96,36 @@ def test_rejects_too_small_context(monkeypatch: pytest.MonkeyPatch) -> None:
         load()
 
 
+def test_database_settings_merge_with_defaults(monkeypatch):
+    monkeypatch.setenv("DESKPILOT_DATABASE__PORT", "6543")
+    database = load().database
+    assert database.port == 6543
+    assert database.name == "deskpilot"
+
+
+def test_database_url_uses_psycopg_and_settings():
+    url = load().database.url
+    assert url.drivername == "postgresql+psycopg"
+    assert (url.host, url.port, url.database, url.username) == (
+        "127.0.0.1",
+        5432,
+        "deskpilot",
+        "deskpilot",
+    )
+
+
+def test_database_password_is_required(monkeypatch):
+    monkeypatch.delenv("DESKPILOT_DATABASE__PASSWORD")
+    with pytest.raises(ValidationError, match="DESKPILOT_DATABASE__PASSWORD"):
+        load()
+
+
+def test_database_password_never_appears_in_repr():
+    settings = load()
+    assert "test-password" not in repr(settings)
+    assert "test-password" not in repr(settings.database.url)
+
+
 def test_rejects_invalid_ollama_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DESKPILOT_OLLAMA_BASE_URL", "not a url")
     with pytest.raises(ValidationError):

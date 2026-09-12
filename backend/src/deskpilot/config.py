@@ -14,6 +14,7 @@ from typing import Literal, Self
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy import URL
 
 # backend/src/deskpilot/config.py -> parents[2] is backend/
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -77,6 +78,34 @@ class EmbeddingSettings(BaseModel):
     model: str = Field(default="nomic-embed-text", min_length=1)
 
 
+class DatabaseSettings(BaseModel):
+    """PostgreSQL connection. The password has no default; Settings requires it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    host: str = "127.0.0.1"
+    port: int = Field(default=5432, gt=0, lt=65_536)
+    name: str = Field(default="deskpilot", min_length=1)
+    user: str = Field(default="deskpilot", min_length=1)
+    password: SecretStr | None = None
+    pool_size: int = Field(default=5, gt=0)
+    echo_sql: bool = False
+
+    @property
+    def url(self) -> URL:
+        """SQLAlchemy URL for the async psycopg driver. Its repr hides the password."""
+        if self.password is None:
+            raise ValueError("DESKPILOT_DATABASE__PASSWORD is not set")
+        return URL.create(
+            drivername="postgresql+psycopg",
+            username=self.user,
+            password=self.password.get_secret_value(),
+            host=self.host,
+            port=self.port,
+            database=self.name,
+        )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="DESKPILOT_",
@@ -104,6 +133,7 @@ class Settings(BaseSettings):
         timeout_s=300.0,
     )
     embeddings: EmbeddingSettings = EmbeddingSettings()
+    database: DatabaseSettings = DatabaseSettings()
 
     def model_for(self, role: ModelRole) -> ModelSettings:
         match role:
@@ -122,6 +152,12 @@ class Settings(BaseSettings):
                 "DESKPILOT_ANTHROPIC_API_KEY is required because these roles use "
                 f"anthropic: {', '.join(roles)}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _database_needs_password(self) -> Self:
+        if self.database.password is None:
+            raise ValueError("DESKPILOT_DATABASE__PASSWORD is required")
         return self
 
 
