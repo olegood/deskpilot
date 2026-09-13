@@ -58,11 +58,9 @@ All commands run from `backend/`.
 
 1. Change the models in `db/models.py`.
 2. Generate a migration with the next sequential ID:
-
-```bash
+   ```bash
    uv run alembic revision --autogenerate --rev-id 0002 -m "short description"
-```
-
+   ```
 3. **Read the generated file.** Autogenerate misses some changes (renames look like drop plus add, for example) and
    can't know about data migrations.
 4. Apply it: `uv run alembic upgrade head`.

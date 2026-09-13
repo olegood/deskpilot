@@ -2,7 +2,7 @@
 
 All Deskpilot backend settings, defined in `backend/src/deskpilot/config.py`.
 
-> Last verified against: milestone 1, step 1.4.
+> Last verified against: milestone 1, step 1.5.
 
 ## How settings are loaded
 
@@ -22,10 +22,11 @@ Invalid configuration fails at startup, not on first use.
 
 ## General
 
-| Variable                      | Default                  | Description                                                                          |
-|-------------------------------|--------------------------|--------------------------------------------------------------------------------------|
-| `DESKPILOT_OLLAMA_BASE_URL`   | `http://127.0.0.1:11434` | Ollama server URL. Must be a valid HTTP URL.                                         |
-| `DESKPILOT_ANTHROPIC_API_KEY` | unset                    | Anthropic API key. Required if any role uses the `anthropic` provider. Never logged. |
+| Variable                      | Default                  | Description                                                                                                                                                                                                                  |
+|-------------------------------|--------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `DESKPILOT_OLLAMA_BASE_URL`   | `http://127.0.0.1:11434` | Ollama server URL. Must be a valid HTTP URL.                                                                                                                                                                                 |
+| `DESKPILOT_ANTHROPIC_API_KEY` | unset                    | Anthropic API key. Required if any role uses the `anthropic` provider. Never logged.                                                                                                                                         |
+| `DESKPILOT_MAX_AGENT_STEPS`   | `6`                      | How many times the agent may call the model in one run. When the budget runs out, the run ends with an escalation message instead of looping. See [D-024](../decisions.md#d-024-the-agent-loop-is-bounded-by-a-step-budget). |
 
 ## Model roles
 

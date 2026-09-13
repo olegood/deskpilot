@@ -135,6 +135,10 @@ class Settings(BaseSettings):
     embeddings: EmbeddingSettings = EmbeddingSettings()
     database: DatabaseSettings = DatabaseSettings()
 
+    # How many times the agent may call the model in one run before it gives up.
+    # Bounds cost and stops a model that keeps calling tools in a loop.
+    max_agent_steps: int = Field(default=6, gt=0)
+
     def model_for(self, role: ModelRole) -> ModelSettings:
         match role:
             case ModelRole.AGENT:

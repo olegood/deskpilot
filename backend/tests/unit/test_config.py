@@ -96,14 +96,14 @@ def test_rejects_too_small_context(monkeypatch: pytest.MonkeyPatch) -> None:
         load()
 
 
-def test_database_settings_merge_with_defaults(monkeypatch):
+def test_database_settings_merge_with_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DESKPILOT_DATABASE__PORT", "6543")
     database = load().database
     assert database.port == 6543
     assert database.name == "deskpilot"
 
 
-def test_database_url_uses_psycopg_and_settings():
+def test_database_url_uses_psycopg_and_settings() -> None:
     url = load().database.url
     assert url.drivername == "postgresql+psycopg"
     assert (url.host, url.port, url.database, url.username) == (
@@ -114,13 +114,13 @@ def test_database_url_uses_psycopg_and_settings():
     )
 
 
-def test_database_password_is_required(monkeypatch):
+def test_database_password_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DESKPILOT_DATABASE__PASSWORD")
     with pytest.raises(ValidationError, match="DESKPILOT_DATABASE__PASSWORD"):
         load()
 
 
-def test_database_password_never_appears_in_repr():
+def test_database_password_never_appears_in_repr() -> None:
     settings = load()
     assert "test-password" not in repr(settings)
     assert "test-password" not in repr(settings.database.url)

@@ -185,7 +185,6 @@ latency and token use predictable.
 **Consequences.** Whether the agent benefits from thinking is decided by evals in milestone 12. Anthropic's thinking
 uses a different mechanism (token budgets, temperature constraints) and gets designed with the Anthropic switch.
 
-
 ---
 
 ### D-016: psycopg 3 is the only PostgreSQL driver
@@ -236,3 +235,101 @@ likewise refuses to start without `POSTGRES_PASSWORD`.
 
 **Why.** A default password in a public repository tends to end up in places it shouldn't. Requiring it costs one line
 in each `.env` file.
+
+---
+
+### D-020: Identity travels in the graph context, never in state
+
+**Date:** 2026-09-12
+
+**Decision.** Who the agent acts for is carried in `AgentContext`, passed to `graph.ainvoke(..., context=...)`. It is
+not part of graph state, not part of the message list, and not checkpointed. Tools receive it through LangGraph's
+`ToolRuntime`. The model supplies only business arguments, such as an order number.
+
+**Why.** Anything in state or messages is text the model reads and could, in principle, be talked into rewriting.
+Identity that lives outside both cannot be forged by prompt injection, because no sequence of tokens can reach it.
+
+**Consequences.** This is the seam the ABAC milestone extends: the context grows into a full principal with attributes,
+and every tool checks it. A tool can still choose to put identity in its output; the guarantee is that the model has no
+other way to obtain it.
+
+---
+
+### D-021: "Not found" and "not yours" give the same answer
+
+**Date:** 2026-09-12
+
+**Decision.** `get_order` returns one message, "No order with that number was found for this customer", both when an
+order does not exist and when it belongs to somebody else.
+
+**Why.** Different answers would turn the agent into an oracle for which order numbers are real. The ownership check is
+part of the SQL query, so another customer's row is never loaded into memory at all.
+
+---
+
+### D-022: Untrusted customer text is withheld from the model for now
+
+**Date:** 2026-09-12
+
+**Decision.** `orders.notes`, which customers type at checkout, is deliberately left out of the tool's output.
+
+**Why.** It is attacker-controlled text. It reaches the model only once spotlighting and the injection guard exist in
+the security milestone, and there is no reason to expose it before then. A unit test asserts it stays out.
+
+---
+
+### D-023: The loop is hand-built; tool plumbing is not
+
+**Date:** 2026-09-12
+
+**Decision.** The ReAct loop, its router, and the step budget are written by hand with `StateGraph` rather than using
+`create_react_agent`. Tool execution uses LangGraph's `ToolNode`.
+
+**Why.** The loop is where every later milestone attaches: an injection guard before it, a policy check after it, an
+approval interrupt before side effects. A prebuilt agent would have to be unpicked. `ToolNode` is the opposite case: it
+injects the context, runs parallel tool calls concurrently, and turns unknown tool names and malformed arguments into
+messages the model can react to. Reimplementing that adds risk and teaches nothing.
+
+---
+
+### D-024: The agent loop is bounded by a step budget
+
+**Date:** 2026-09-12
+
+**Decision.** A run may call the model at most `DESKPILOT_MAX_AGENT_STEPS` times (6 by default). When the budget runs
+out, the run ends with a fixed message telling the customer a colleague will follow up.
+
+**Why.** A model that keeps calling tools would otherwise loop until something else broke, spending tokens and time.
+Ending with a plain message is also how escalation will behave later.
+
+**Consequences.** Detecting repeated identical calls, per-call timeouts, and retries arrive with the resilience
+milestone. This is the floor, not the finished behaviour.
+
+---
+
+### D-025: Tool exceptions never reach the model verbatim
+
+**Date:** 2026-09-12
+
+**Decision.** When a tool raises, the model receives a fixed instruction to report the failure and not retry it. The
+exception is logged server-side only.
+
+**Why.** Exception text routinely contains hostnames, connection strings, and table names, and anything the model
+receives can end up in a reply to a customer. A fixed message also avoids the pattern where an unfamiliar error tempts
+the model into retrying the same call.
+
+---
+
+### D-026: Graph behaviour is tested with a scripted model
+
+**Date:** 2026-09-12
+
+**Decision.** A third test suite, `tests/graph/`, drives the real graph with a `ScriptedChatModel` that returns prepared
+responses. It runs by default alongside the unit tests. Real-model behaviour stays in the integration suite.
+
+**Why.** Loop control, routing, error handling, and the step budget are deterministic logic and deserve deterministic
+tests that run in milliseconds. Testing them through a real LLM would be slow and flaky, and a flaky test on a
+security-relevant path is worse than no test.
+
+**Consequences.** The fake must return a fresh message with unique ids each turn. Reusing one message object makes
+`add_messages` treat the second turn as an edit of the first, which silently caps the loop and hides off-by-one errors.

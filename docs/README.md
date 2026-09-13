@@ -11,6 +11,7 @@
 | [Ollama guide](guides/ollama.md)                      | Running local models: settings, memory, troubleshooting              |
 | [Development guide](guides/development.md)            | Daily workflow: tests, linting, dependencies, commits                |
 | [Database guide](guides/database.md)                  | PostgreSQL, migrations, schema conventions, seed data                |
+| [Agent guide](guides/agent.md)                        | The graph, tools, where identity lives, and how to run the agent     |
 | [Configuration reference](reference/configuration.md) | Every setting and environment variable                               |
 
 ## Where to start
@@ -20,6 +21,7 @@
 - **Setting up a machine:** follow the [setup guide](guides/setup.md) top to bottom.
 - **Changing a setting:** see the [configuration reference](reference/configuration.md).
 - **Changing the database schema:** see the [database guide](guides/database.md#changing-the-schema).
+- **Adding a tool or changing the loop:** see the [agent guide](guides/agent.md).
 - **Wondering why something is built a certain way:** check the [decisions](decisions.md).
 
 ## Conventions

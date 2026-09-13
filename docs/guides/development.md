@@ -2,7 +2,7 @@
 
 Daily workflow for working on Deskpilot.
 
-> Last verified against: milestone 1, step 1.4.
+> Last verified against: milestone 1, step 1.5.
 
 ## Current layout
 
@@ -23,10 +23,14 @@ deskpilot/
 │   │   ├── config.py          # typed settings
 │   │   ├── llm.py             # chat model factory, the only provider-aware module
 │   │   ├── cli.py             # `deskpilot` command-line interface
-│   │   └── db/                # models, sessions, seed data
+│   │   ├── db/                # models, sessions, seed data
+│   │   ├── graph/             # state, context, prompts, the loop, the runner
+│   │   └── tools/             # what the agent can call
 │   └── tests/
 │       ├── conftest.py        # shared fixtures, e.g. environment isolation
+│       ├── support.py         # scripted chat model and tool-invocation helper
 │       ├── unit/              # fast, no external services
+│       ├── graph/             # the agent loop, driven by a scripted model
 │       └── integration/       # real services, skipped by default
 ├── scripts/
 │   └── ollama-serve.sh
@@ -37,21 +41,23 @@ deskpilot/
 
 Run from `backend/`:
 
-| Task                              | Command                                      |
-|-----------------------------------|----------------------------------------------|
-| Install or update the environment | `uv sync`                                    |
-| Run unit tests                    | `uv run pytest`                              |
-| Run one test file                 | `uv run pytest tests/unit/test_config.py`    |
-| Run tests matching a name         | `uv run pytest -k anthropic`                 |
-| Run integration tests             | `uv run pytest -m integration`               |
-| Integration tests with timings    | `uv run pytest -m integration --durations=0` |
-| Lint                              | `uv run ruff check .`                        |
-| Auto-fix lint issues              | `uv run ruff check . --fix`                  |
-| Format                            | `uv run ruff format .`                       |
-| Type check                        | `uv run mypy src`                            |
-| Apply migrations                  | `uv run alembic upgrade head`                |
-| Reseed the development database   | `uv run deskpilot db seed --reset`           |
-| Show all CLI commands             | `uv run deskpilot --help`                    |
+| Task                              | Command                                                   |
+|-----------------------------------|-----------------------------------------------------------|
+| Install or update the environment | `uv sync`                                                 |
+| Run unit tests                    | `uv run pytest`                                           |
+| Run one test file                 | `uv run pytest tests/unit/test_config.py`                 |
+| Run tests matching a name         | `uv run pytest -k anthropic`                              |
+| Run integration tests             | `uv run pytest -m integration`                            |
+| Integration tests with timings    | `uv run pytest -m integration --durations=0`              |
+| Lint                              | `uv run ruff check .`                                     |
+| Auto-fix lint issues              | `uv run ruff check . --fix`                               |
+| Format                            | `uv run ruff format .`                                    |
+| Type check                        | `uv run mypy src`                                         |
+| Apply migrations                  | `uv run alembic upgrade head`                             |
+| Reseed the development database   | `uv run deskpilot db seed --reset`                        |
+| Ask the agent something           | `uv run deskpilot ask "..." --as noah.kim@example.com -v` |
+| Run only the graph tests          | `uv run pytest tests/graph`                               |
+| Show all CLI commands             | `uv run deskpilot --help`                                 |
 
 Infrastructure commands run from the repo root: `docker compose up -d` to start, `docker compose ps` to check health.
 See the [database guide](database.md) for more.
@@ -59,13 +65,15 @@ See the [database guide](database.md) for more.
 ## Tests
 
 - **Unit tests** (`tests/unit/`) are fast and need no external services. They run by default.
+- **Graph tests** (`tests/graph/`) drive the real graph with a scripted model instead of an LLM, so loop logic is
+  deterministic and takes milliseconds. They run by default too. See the [agent guide](agent.md#tests).
 - **Integration tests** (`tests/integration/`) are marked `@pytest.mark.integration` and need real services. They're
   skipped by default and run with `-m integration`. They need Ollama running (`./scripts/ollama-serve.sh`) with the
   agent model from `backend/.env` pulled, and PostgreSQL running (`docker compose up -d`). They fail with a clear
   message if a service is missing. Run a subset with `-k`, for example `uv run pytest -m integration -k database`.
 - **LLM tests are nondeterministic.** Even at temperature 0, a model can occasionally answer differently. A single
-  integration failure is worth rerunning once; repeated failures are real findings. Graph logic is tested with scripted
-  fake models in unit tests instead (from milestone 1, step 1.5).
+  integration failure is worth rerunning once; repeated failures are real findings. Anything deterministic belongs in
+  `tests/graph/` instead.
 - Async tests need no decorator: `asyncio_mode = "auto"` is set in `pyproject.toml`.
 - Unit tests must not depend on your local `backend/.env` or shell. `tests/conftest.py` clears `DESKPILOT_*` variables
   for every test and sets a placeholder database password, and settings in unit tests are built with `_env_file=None`.
@@ -97,6 +105,8 @@ If you import a package directly, declare it directly, even if another dependenc
   `langchain_ollama` or `langchain_anthropic`.
 - **Explicit loading.** Relationships use `lazy="raise"`, so queries load what they need with `selectinload(...)`.
 - **Schema changes need a migration.** See [changing the schema](database.md#changing-the-schema).
+- **Identity never goes into graph state or messages.** It travels in `AgentContext`, outside anything the model can
+  read. See the [agent guide](agent.md#where-identity-lives).
 
 ## Definition of done for a step
 

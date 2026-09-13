@@ -1,0 +1,129 @@
+"""Test doubles and helpers shared by the test suites.
+
+ScriptedChatModel lets graph logic be tested without an LLM: it returns prepared
+responses in order and records what it was asked, so the tests are fast and fully
+deterministic. Real-model behaviour is covered by the integration tests instead.
+
+invoke_tool runs a single tool the way the graph does, so tools can be tested with
+their injected context.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from typing import Annotated, Any, TypedDict
+
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
+from langchain_core.language_models import BaseChatModel, LanguageModelInput
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import Runnable
+from langchain_core.tools import BaseTool
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from pydantic import Field
+
+
+def tool_call(name: str, call_id: str = "call-1", **args: Any) -> dict[str, Any]:
+    """Build one tool call for a scripted AIMessage."""
+    return {"name": name, "args": args, "id": call_id, "type": "tool_call"}
+
+
+def ai_with_tool_calls(*calls: dict[str, Any]) -> AIMessage:
+    return AIMessage("", tool_calls=list(calls), usage_metadata=usage())
+
+
+def ai_text(text: str) -> AIMessage:
+    return AIMessage(text, usage_metadata=usage())
+
+
+def usage(input_tokens: int = 10, output_tokens: int = 5) -> dict[str, int]:
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+    }
+
+
+class ScriptedChatModel(BaseChatModel):
+    """Returns the scripted responses in order, repeating the last one if it runs out."""
+
+    responses: list[AIMessage]
+    # Every list of messages the model was asked to answer, for assertions.
+    calls: list[list[BaseMessage]] = Field(default_factory=list)
+    # Names of the tools the graph bound to the model, for assertions.
+    bound_tools: list[str] = Field(default_factory=list)
+
+    @property
+    def _llm_type(self) -> str:
+        return "scripted"
+
+    def bind_tools(
+        self,
+        tools: Sequence[dict[str, Any] | type | Callable[..., Any] | BaseTool],
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, BaseMessage]:
+        self.bound_tools = [getattr(tool, "name", str(tool)) for tool in tools]
+        return self
+
+    def _next(self, messages: list[BaseMessage]) -> ChatResult:
+        self.calls.append(list(messages))
+        turn = len(self.calls)
+        index = min(turn - 1, len(self.responses) - 1)
+        # A fresh copy with unique ids every turn. Reusing one message object would
+        # make add_messages treat the second turn as an edit of the first, and would
+        # reuse tool_call ids across turns.
+        template = self.responses[index]
+        response = template.model_copy(
+            update={
+                "id": f"scripted-{turn}",
+                "tool_calls": [
+                    {**call, "id": f"{call['id']}-{turn}"} for call in template.tool_calls
+                ],
+            }
+        )
+        return ChatResult(generations=[ChatGeneration(message=response)])
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        return self._next(messages)
+
+    async def _agenerate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        return self._next(messages)
+
+
+def scripted(responses: Sequence[AIMessage]) -> ScriptedChatModel:
+    return ScriptedChatModel(responses=list(responses))
+
+
+async def invoke_tool(tool: BaseTool, context: Any, /, **args: Any) -> ToolMessage:
+    """Run one tool exactly as the graph would, with its context injected.
+
+    Tools that declare a ToolRuntime parameter cannot simply be awaited: the runtime
+    is supplied by ToolNode during graph execution. This wraps a one-node graph
+    around the call so tests exercise the real path.
+    """
+
+    class State(TypedDict):
+        messages: Annotated[list[AnyMessage], add_messages]
+
+    builder: StateGraph[State, Any, State, State] = StateGraph(State, context_schema=type(context))
+    builder.add_node("tools", ToolNode([tool]))
+    builder.add_edge(START, "tools")
+    builder.add_edge("tools", END)
+
+    request = AIMessage("", tool_calls=[tool_call(tool.name, **args)])
+    result = await builder.compile().ainvoke({"messages": [request]}, context=context)
+    return next(m for m in result["messages"] if isinstance(m, ToolMessage))

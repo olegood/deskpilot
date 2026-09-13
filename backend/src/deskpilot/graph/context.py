@@ -1,0 +1,26 @@
+"""Runtime context for an agent run.
+
+The context holds who the agent is acting for and what it needs to reach the
+database. It is passed to `ainvoke(..., context=...)`, is never part of graph
+state, and is never serialized into messages, so the model cannot read or change
+it. Tools receive it through `ToolRuntime`.
+
+This is the seed of the identity model: from the ABAC milestone onwards, the
+context carries a full principal with attributes, and every tool checks it.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+
+@dataclass(frozen=True)
+class AgentContext:
+    """Identity and dependencies for one agent run."""
+
+    # The customer whose data this run may touch. Comes the authenticated
+    # session, never from the ticket text or the model.
+    customer_email: str
+    session_factory: async_sessionmaker[AsyncSession]

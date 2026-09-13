@@ -17,15 +17,15 @@ from deskpilot.db.session import create_session_factory
 
 from .conftest import alembic_config
 
-pytestmark = [pytest.mark.integration]
+pytestmark = pytest.mark.integration
 
 
-def test_migrations_match_models(test_database: DatabaseSettings):
+def test_migrations_match_models(test_database: DatabaseSettings) -> None:
     """Fails if a model changed without a migration (alembic check)."""
     command.check(alembic_config(test_database))
 
 
-async def test_seed_loads_expected_data(engine: AsyncEngine):
+async def test_seed_loads_expected_data(engine: AsyncEngine) -> None:
     session_factory = create_session_factory(engine)
     async with session_factory() as session:
         result = await seed(session, reset=True)

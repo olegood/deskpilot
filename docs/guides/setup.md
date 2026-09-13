@@ -2,7 +2,7 @@
 
 Sets up a development machine from zero. Follow the steps in order.
 
-> Last verified against: milestone 1, step 1.4.
+> Last verified against: milestone 1, step 1.5.
 
 ## Target machine
 
@@ -19,6 +19,7 @@ brew install git uv ollama
 
 Install **Docker Desktop** or **OrbStack** (lighter on macOS). It runs PostgreSQL now and the fake vendors later. In its
 settings, limit memory to about 6 GB, so the local model has room.
+
 Node.js and pnpm are needed from milestone 5 and will be added to this guide then.
 
 ## 2. Clone the repository
@@ -118,6 +119,15 @@ uv run mypy src
 ```
 
 All five should pass with no errors. The integration tests take longer the first time, while the model loads.
+
+Then try the agent:
+
+```bash
+uv run deskpilot ask "Hi, where is my order ORD-1042?" --as noah.kim@example.com --verbose
+```
+
+It should report that the order has shipped, and the verbose line should show that
+`get_order` was called. See the [agent guide](agent.md) for more to try.
 
 ## What should be running
 

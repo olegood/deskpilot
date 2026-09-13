@@ -1,19 +1,24 @@
-"""Fixtures for integration tests that need PostgreSQL.
+"""Fixtures for integration tests, which need real PostgreSQL and real Ollama.
 
-They use a separate database, <name>_test (deskpilot_test by default), so tests
-never touch your development data. Docker Compose creates it on first start.
+Database tests use a separate database, <name>_test (deskpilot_test by default), so
+they never touch your development data. Docker Compose creates it on first start.
+
+Each fixture fails with an actionable message when a service is missing, instead of
+letting tests fail with a connection error buried in a stack trace.
 """
 
 from collections.abc import AsyncIterator
 
+import httpx
 import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from deskpilot.config import BACKEND_DIR, DatabaseSettings, Settings
-from deskpilot.db.session import create_engine
+from deskpilot.config import BACKEND_DIR, DatabaseSettings, Provider, Settings
+from deskpilot.db.seed import seed
+from deskpilot.db.session import create_engine, create_session_factory
 
 
 def alembic_config(database: DatabaseSettings) -> Config:
@@ -27,7 +32,7 @@ def test_database() -> DatabaseSettings:
     """Settings for the test database, migrated from scratch to the latest revision."""
     database = Settings().database
     database = database.model_copy(update={"name": f"{database.name}_test"})
-    assert database.password is not None
+    assert database.password is not None  # guaranteed by Settings validation
     try:
         with psycopg.connect(
             host=database.host,
@@ -40,7 +45,7 @@ def test_database() -> DatabaseSettings:
             pass
     except psycopg.OperationalError as exc:
         pytest.fail(
-            f"cannot connect to test database {database.name!r}: {exc}."
+            f"cannot connect to test database {database.name!r}: {exc}. "
             "Is `docker compose up -d` running?"
         )
     config = alembic_config(database)
@@ -54,3 +59,31 @@ async def engine(test_database: DatabaseSettings) -> AsyncIterator[AsyncEngine]:
     engine = create_engine(test_database)
     yield engine
     await engine.dispose()
+
+
+@pytest.fixture
+async def seeded_sessions(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """A session factory over a freshly seeded test database."""
+    session_factory = create_session_factory(engine)
+    async with session_factory() as session:
+        await seed(session, reset=True)
+    return session_factory
+
+
+@pytest.fixture(scope="session")
+def agent_settings() -> Settings:
+    """Real settings from backend/.env, after checking Ollama has the agent model."""
+    settings = Settings()
+    if settings.agent.provider is not Provider.OLLAMA:
+        pytest.skip("the agent role is not configured for Ollama")
+    base_url = str(settings.ollama_base_url).rstrip("/")
+    try:
+        response = httpx.get(f"{base_url}/api/tags", timeout=5.0)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        pytest.fail(f"Ollama is not reachable at {base_url}: {exc}. Is ollama-serve.sh running?")
+    pulled = {model["name"] for model in response.json()["models"]}
+    wanted = settings.agent.model
+    if wanted not in pulled and f"{wanted}:latest" not in pulled:
+        pytest.fail(f"model {wanted!r} is not pulled; run: ollama pull {wanted}")
+    return settings

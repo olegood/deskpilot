@@ -30,9 +30,10 @@ Each milestone ends with something runnable, tested, and documented.
   and token usage.
 - [x] **1.4 Postgres and the shop.** Docker Compose, SQLAlchemy models, Alembic migration, deterministic seed data,
   `deskpilot db seed` CLI, integration tests on a separate test database.
-- [ ] **1.5 First tool and minimal ReAct graph.** `get_order`, a hand-built LangGraph loop, CLI answering "where is my
-  order?"
-- [ ] **1.6 Wrap-up.** README and docs pass.
+- [x] **1.5 First tool and minimal ReAct graph.** `get_order` scoped to the acting customer, a hand-built loop with a
+  step budget and tool-error handling, identity injected outside the model, `deskpilot ask`, and graph tests driven by a
+  scripted model.
+- [ ] **1.6 Wrap-up.** README, a demo transcript, and a docs pass.
 
 ## Post-production backlog
 
