@@ -2,7 +2,7 @@
 
 How Deskpilot runs local models, and how to tune and troubleshoot them.
 
-> Last verified against: milestone 1, step 1.2.
+> Last verified against: milestone 1 (complete).
 
 ## Why Ollama runs outside Docker
 

@@ -2,7 +2,7 @@
 
 Daily workflow for working on Deskpilot.
 
-> Last verified against: milestone 1, step 1.5.
+> Last verified against: milestone 1 (complete).
 
 ## Current layout
 

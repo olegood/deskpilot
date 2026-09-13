@@ -2,7 +2,7 @@
 
 How the agent works, how to run it, and how to add to it.
 
-> Last verified against: milestone 1, step 1.5.
+> Last verified against: milestone 1 (complete).
 
 ## What the agent can do today
 

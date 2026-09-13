@@ -4,22 +4,22 @@ Each milestone ends with something runnable, tested, and documented.
 
 ## Milestones
 
-| #  | Milestone                                                                              | Status      |
-|----|----------------------------------------------------------------------------------------|-------------|
-| 1  | Foundation: uv, config, model factory, Postgres, seeded shop, minimal ReAct graph      | In progress |
-| 2  | Tools and state: local tools, checkpointing, CLI runner                                | Planned     |
-| 3  | Auth: bcrypt passwords, JWT access and refresh tokens with rotation                    | Planned     |
-| 4  | ABAC: policy engine, audit log, principal injection into tools                         | Planned     |
-| 5  | Web API and frontend shell: endpoints, SSE streaming, login, customer portal           | Planned     |
-| 6  | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos   | Planned     |
-| 7  | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned     |
-| 8  | Delegated OAuth: Connections page, PKCE flow, token vault                              | Planned     |
-| 9  | Human-in-the-loop via web: approvals under the reviewer's token, idempotency           | Planned     |
-| 10 | Security: injection guard, MCP threats, output sanitization, red-team set              | Planned     |
-| 11 | Observability: cross-service tracing, token and cost accounting                        | Planned     |
-| 12 | Evals: dataset, scorers, LLM judge, two-phase runner, local model comparison           | Planned     |
-| 13 | Anthropic switch: flip provider, rerun evals, compare                                  | Planned     |
-| 14 | End-to-end: Playwright suite for the full flow                                         | Planned     |
+| #  | Milestone                                                                                       | Status   |
+|----|-------------------------------------------------------------------------------------------------|----------|
+| 1  | Foundation: uv, config, model factory, Postgres, seeded shop, minimal ReAct graph               | **Done** |
+| 2  | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | Next     |
+| 3  | Auth: bcrypt passwords, JWT access and refresh tokens with rotation                             | Planned  |
+| 4  | ABAC: policy engine, audit log, principal injection into tools                                  | Planned  |
+| 5  | Web API and frontend shell: endpoints, SSE streaming, login, customer portal                    | Planned  |
+| 6  | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos            | Planned  |
+| 7  | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning          | Planned  |
+| 8  | Delegated OAuth: Connections page, PKCE flow, token vault                                       | Planned  |
+| 9  | Human-in-the-loop via web: approvals under the reviewer's token, idempotency                    | Planned  |
+| 10 | Security: injection guard, MCP threats, output sanitization, red-team set                       | Planned  |
+| 11 | Observability: cross-service tracing, token and cost accounting                                 | Planned  |
+| 12 | Evals: dataset, scorers, LLM judge, two-phase runner, local model comparison                    | Planned  |
+| 13 | Anthropic switch: flip provider, rerun evals, compare                                           | Planned  |
+| 14 | End-to-end: Playwright suite for the full flow                                                  | Planned  |
 
 ## Milestone 1: Foundation
 
@@ -33,7 +33,7 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **1.5 First tool and minimal ReAct graph.** `get_order` scoped to the acting customer, a hand-built loop with a
   step budget and tool-error handling, identity injected outside the model, `deskpilot ask`, and graph tests driven by a
   scripted model.
-- [ ] **1.6 Wrap-up.** README, a demo transcript, and a docs pass.
+- [x] **1.6 Wrap-up.** Project README, `scripts/check.sh`, and a docs pass with every cross-link verified.
 
 ## Post-production backlog
 

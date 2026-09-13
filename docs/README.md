@@ -24,6 +24,12 @@
 - **Adding a tool or changing the loop:** see the [agent guide](guides/agent.md).
 - **Wondering why something is built a certain way:** check the [decisions](decisions.md).
 
+## Checks
+
+`./scripts/check.sh` from the repo root runs everything that must pass before a
+commit: lockfile, lint, formatting, types, and the fast tests. Add `--all` to
+include the integration tests, which need Ollama and PostgreSQL running.
+
 ## Conventions
 
 - **Docs change with code.** A change that affects setup, configuration, or behavior updates the relevant doc in the

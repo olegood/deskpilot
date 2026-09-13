@@ -1,7 +1,7 @@
 # Architecture overview
 
 > Describes the target design. Parts not built yet are listed in the [roadmap](../roadmap.md).
-> Last updated: milestone 1, step 1.5.
+> Last verified against: milestone 1 (complete).
 
 ## What Deskpilot does
 

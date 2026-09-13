@@ -2,7 +2,7 @@
 
 All Deskpilot backend settings, defined in `backend/src/deskpilot/config.py`.
 
-> Last verified against: milestone 1, step 1.5.
+> Last verified against: milestone 1 (complete).
 
 ## How settings are loaded
 

@@ -2,7 +2,7 @@
 
 Sets up a development machine from zero. Follow the steps in order.
 
-> Last verified against: milestone 1, step 1.5.
+> Last verified against: milestone 1 (complete).
 
 ## Target machine
 

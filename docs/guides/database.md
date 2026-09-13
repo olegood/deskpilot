@@ -2,7 +2,7 @@
 
 Working with PostgreSQL, migrations, and seed data.
 
-> Last verified against: milestone 1, step 1.4.
+> Last verified against: milestone 1 (complete).
 
 ## Overview
 
