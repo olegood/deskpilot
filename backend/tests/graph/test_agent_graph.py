@@ -50,6 +50,7 @@ def start(question: str = "where is my order ORD-1042?") -> AgentState:
         "steps": 0,
         "input_tokens": 0,
         "output_tokens": 0,
+        "escalated": False,
     }
 
 
@@ -71,6 +72,7 @@ async def test_answers_directly_when_no_tool_is_needed() -> None:
     result = await run(model)
 
     assert result["steps"] == 1
+    assert result["escalated"] is False
     assert isinstance(result["messages"][-1], AIMessage)
     assert result["messages"][-1].text == "Hello, how can I help?"
 
@@ -193,6 +195,7 @@ async def test_step_budget_stops_a_looping_model() -> None:
 
     assert result["steps"] == 3
     assert result["messages"][-1].text == STEP_BUDGET_MESSAGE
+    assert result["escalated"] is True
 
 
 @pytest.mark.parametrize("max_steps", [1, 2, 5])

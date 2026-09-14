@@ -7,12 +7,14 @@ nondeterministic, which is why graph logic is covered by tests/graph instead.
 Run with: uv run pytest -m integration (needs Ollama and `docker compose up -d`).
 """
 
+import uuid
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deskpilot.config import Settings
 from deskpilot.graph.context import AgentContext
-from deskpilot.graph.runner import AgentRun, answer_question
+from deskpilot.graph.runner import AgentRun, run_agent
 
 pytestmark = pytest.mark.integration
 
@@ -27,7 +29,8 @@ async def ask(
     settings: Settings,
 ) -> AgentRun:
     context = AgentContext(customer_email=customer_email, session_factory=sessions)
-    return await answer_question(question, context, settings)
+    # A throwaway thread and no checkpointer: each of these is a one-shot run.
+    return await run_agent(question, context, str(uuid.uuid4()), settings=settings)
 
 
 async def test_agent_looks_up_an_order_and_answers_from_the_result(

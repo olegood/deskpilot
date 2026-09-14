@@ -7,6 +7,7 @@ Each fixture fails with an actionable message when a service is missing, instead
 letting tests fail with a connection error buried in a stack trace.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import httpx
@@ -17,6 +18,7 @@ from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from deskpilot.config import BACKEND_DIR, DatabaseSettings, Provider, Settings
+from deskpilot.db.checkpointer import setup_checkpointer
 from deskpilot.db.seed import seed
 from deskpilot.db.session import create_engine, create_session_factory
 
@@ -51,6 +53,9 @@ def test_database() -> DatabaseSettings:
     config = alembic_config(database)
     command.downgrade(config, "base")
     command.upgrade(config, "head")
+    # LangGraph owns its checkpoint tables and creates them itself; Alembic is told
+    # to leave them alone, so they are set up separately here.
+    asyncio.run(setup_checkpointer(database))
     return database
 
 

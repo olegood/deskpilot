@@ -5,6 +5,8 @@ model by role and receives a LangChain BaseChatModel, so switching a role from
 Ollama to Anthropic is purely a configuration change.
 """
 
+from __future__ import annotations
+
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_ollama import ChatOllama
@@ -37,7 +39,7 @@ def _build_ollama(model: ModelSettings, settings: Settings) -> ChatOllama:
 
 
 def _build_anthropic(model: ModelSettings, settings: Settings) -> ChatAnthropic:
-    if settings.anthropic_api_key is None:
+    if settings.anthropic_api_key is None:  # Settings validation normally prevents this.
         raise ValueError("DESKPILOT_ANTHROPIC_API_KEY is not set")
     return ChatAnthropic(
         model=model.model,

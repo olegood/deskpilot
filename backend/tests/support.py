@@ -10,6 +10,7 @@ their injected context.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, TypedDict
 
@@ -54,6 +55,9 @@ class ScriptedChatModel(BaseChatModel):
     calls: list[list[BaseMessage]] = Field(default_factory=list)
     # Names of the tools the graph bound to the model, for assertions.
     bound_tools: list[str] = Field(default_factory=list)
+    # Unique per instance, so two models in one conversation never emit the same
+    # message id. Colliding ids make add_messages overwrite instead of append.
+    run_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
     def _llm_type(self) -> str:
@@ -77,9 +81,10 @@ class ScriptedChatModel(BaseChatModel):
         template = self.responses[index]
         response = template.model_copy(
             update={
-                "id": f"scripted-{turn}",
+                "id": f"scripted-{self.run_id}-{turn}",
                 "tool_calls": [
-                    {**call, "id": f"{call['id']}-{turn}"} for call in template.tool_calls
+                    {**call, "id": f"{call['id']}-{self.run_id}-{turn}"}
+                    for call in template.tool_calls
                 ],
             }
         )

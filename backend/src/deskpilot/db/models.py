@@ -54,6 +54,16 @@ class CustomerTier(StrEnum):
     GOLD = "gold"
 
 
+class TicketStatus(StrEnum):
+    # The agent (or a human) still owes the customer a reply.
+    OPEN = "open"
+    # The agent has replied; the ball is with the customer.
+    AWAITING_CUSTOMER = "awaiting_customer"
+    # Handed to a human, e.g. because the agent ran out of steps.
+    ESCALATED = "escalated"
+    RESOLVED = "resolved"
+
+
 class OrderStatus(StrEnum):
     PENDING = "pending"
     PAID = "paid"
@@ -73,6 +83,37 @@ class Customer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     orders: Mapped[list[Order]] = relationship(back_populates="customer", lazy="raise")
+    tickets: Mapped[list[Ticket]] = relationship(back_populates="customer", lazy="raise")
+
+
+class Ticket(Base):
+    """One support conversation.
+
+    A ticket is also one LangGraph thread: `thread_id` is the key its checkpoints are
+    stored under, so the conversation itself lives in LangGraph's tables rather than
+    being duplicated here. This row holds only what needs to be queried and listed.
+    """
+
+    __tablename__ = "tickets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Public reference the customer sees and types, e.g. TCK-0007.
+    reference: Mapped[str] = mapped_column(String(32), unique=True)
+    # Key for this ticket's LangGraph checkpoints. Separate from the reference so a
+    # change to how references are formatted can never orphan a conversation.
+    thread_id: Mapped[str] = mapped_column(String(64), unique=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    # Written by the customer. Untrusted text: it is not shown to the model yet.
+    subject: Mapped[str] = mapped_column(String(200))
+    status: Mapped[TicketStatus] = mapped_column(
+        str_enum(TicketStatus, "ticket_status"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    customer: Mapped[Customer] = relationship(back_populates="tickets", lazy="raise")
 
 
 class Product(Base):
@@ -119,7 +160,7 @@ class OrderItem(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"))
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     quantity: Mapped[int]
     # Price at the time of purchase; product prices can change later.

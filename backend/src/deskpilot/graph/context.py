@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 class AgentContext:
     """Identity and dependencies for one agent run."""
 
-    # The customer whose data this run may touch. Comes the authenticated
+    # The customer whose data this run may touch. Comes from the authenticated
     # session, never from the ticket text or the model.
     customer_email: str
     session_factory: async_sessionmaker[AsyncSession]

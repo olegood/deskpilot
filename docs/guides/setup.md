@@ -6,8 +6,7 @@ Sets up a development machine from zero. Follow the steps in order.
 
 ## Target machine
 
-Developed on macOS with Apple Silicon (M4 Pro, 48 GB unified memory). The default agent model needs roughly 24 GB.
-Machines with 32 GB or less should use the smaller model described in [the Ollama guide](ollama.md#smaller-machines).
+Developed on macOS with Apple Silicon (M4 Pro, 48 GB unified memory). The default agent model needs roughly 24 GB. Machines with 32 GB or less should use the smaller model described in [the Ollama guide](ollama.md#smaller-machines).
 
 ## 1. Install tools
 
@@ -17,8 +16,7 @@ Install [Homebrew](https://brew.sh) if you don't have it, then:
 brew install git uv ollama
 ```
 
-Install **Docker Desktop** or **OrbStack** (lighter on macOS). It runs PostgreSQL now and the fake vendors later. In its
-settings, limit memory to about 6 GB, so the local model has room.
+Install **Docker Desktop** or **OrbStack** (lighter on macOS). It runs PostgreSQL now and the fake vendors later. In its settings, limit memory to about 6 GB, so the local model has room.
 
 Node.js and pnpm are needed from milestone 5 and will be added to this guide then.
 
@@ -97,14 +95,13 @@ The first start also creates the `deskpilot_test` database used by integration t
 cd backend
 uv sync
 uv run alembic upgrade head
+uv run deskpilot db setup
 uv run deskpilot db seed
 ```
 
-`uv sync` installs the Python version pinned in `.python-version` (if missing) and every dependency exactly as recorded
-in `uv.lock`. `alembic upgrade head` creates the tables, and `deskpilot db seed` loads the Acme Gear sample data.
+`uv sync` installs the Python version pinned in `.python-version` (if missing) and every dependency exactly as recorded in `uv.lock`. `alembic upgrade head` creates the application tables, `deskpilot db setup` creates LangGraph's checkpoint tables, and `deskpilot db seed` loads the Acme Gear sample data.
 
-Apart from the password, the defaults in `backend/.env.example` work as is. See
-the [configuration reference](../reference/configuration.md) for all options.
+Apart from the password, the defaults in `backend/.env.example` work as is. See the [configuration reference](../reference/configuration.md) for all options.
 
 ## 8. Verify
 
@@ -123,38 +120,38 @@ All five should pass with no errors. The integration tests take longer the first
 Then try the agent:
 
 ```bash
-uv run deskpilot ask "Hi, where is my order ORD-1042?" --as noah.kim@example.com --verbose
+uv run deskpilot ticket new "Hi, where is my order ORD-1042?" \
+    --as noah.kim@example.com --subject "Where is my order" --verbose
+
+uv run deskpilot ticket reply TCK-0001 "Thanks. What about ORD-1031?" \
+    --as noah.kim@example.com
 ```
 
-It should report that the order has shipped, and the verbose line should show that
-`get_order` was called. See the [agent guide](agent.md) for more to try.
+The first should report that the order has shipped and show that `get_order` was
+called. The second is a separate process picking the same conversation back up. See
+the [agent guide](agent.md) for more to try.
 
 ## What should be running
 
-| Process    | Where             | How                         |
-|------------|-------------------|-----------------------------|
-| Ollama     | Host, port 11434  | `./scripts/ollama-serve.sh` |
-| PostgreSQL | Docker, port 5432 | `docker compose up -d`      |
+| Process | Where | How |
+|---|---|---|
+| Ollama | Host, port 11434 | `./scripts/ollama-serve.sh` |
+| PostgreSQL | Docker, port 5432 | `docker compose up -d` |
 
 This table grows as later milestones add services.
 
 ## Troubleshooting
 
-**`ollama ps` shows a CPU percentage.** Part of the model didn't fit in GPU memory. Close memory-heavy apps, check
-Docker's memory limit, or reduce `OLLAMA_NUM_PARALLEL`. See [the Ollama guide](ollama.md#troubleshooting).
+**`ollama ps` shows a CPU percentage.** Part of the model didn't fit in GPU memory. Close memory-heavy apps, check Docker's memory limit, or reduce `OLLAMA_NUM_PARALLEL`. See [the Ollama guide](ollama.md#troubleshooting).
 
 **`address already in use` when starting Ollama.** Another Ollama instance is running. See step 3.
 
-**`ollama pull` says the model doesn't exist.** Model tags change over time.
-Check [ollama.com/library](https://ollama.com/library) for the current tag and update `backend/.env`.
+**`ollama pull` says the model doesn't exist.** Model tags change over time. Check [ollama.com/library](https://ollama.com/library) for the current tag and update `backend/.env`.
 
-**Tests fail with a settings error.** Check your shell for leftover `DESKPILOT_*` variables with `env | grep DESKPILOT`.
-Unit tests clear these, but integration tests and other commands read them.
+**Tests fail with a settings error.** Check your shell for leftover `DESKPILOT_*` variables with `env | grep DESKPILOT`. Unit tests clear these, but integration tests and other commands read them.
 
 **Database errors.** See [troubleshooting in the database guide](database.md#troubleshooting).
 
-**Integration tests say Ollama is not reachable.** Start `./scripts/ollama-serve.sh` and check
-`DESKPILOT_OLLAMA_BASE_URL` in `backend/.env`.
+**Integration tests say Ollama is not reachable.** Start `./scripts/ollama-serve.sh` and check `DESKPILOT_OLLAMA_BASE_URL` in `backend/.env`.
 
-**An integration test fails once, then passes.** LLM output varies slightly even at temperature 0. Repeated failures of
-the same test are a real problem worth reporting.
+**An integration test fails once, then passes.** LLM output varies slightly even at temperature 0. Repeated failures of the same test are a real problem worth reporting.

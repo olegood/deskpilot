@@ -19,10 +19,21 @@ from deskpilot.db.models import Base
 config = context.config
 
 if config.config_file_name is not None:
-    # Keep loggers configured by the called (e.g. pytest) working.
+    # Keep loggers configured by the caller (e.g. pytest) working.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
+
+# Tables LangGraph creates and migrates itself, via AsyncPostgresSaver.setup().
+# Without this, autogenerate sees them as unknown and writes DROP TABLE for each.
+LANGGRAPH_TABLES = frozenset(
+    {"checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations"}
+)
+
+
+def include_name(name: str | None, type_: str, parent_names: dict[str, str | None]) -> bool:
+    """Keep Alembic's hands off tables another library owns."""
+    return not (type_ == "table" and name in LANGGRAPH_TABLES)
 
 
 def database_url() -> URL:
@@ -40,13 +51,19 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_name=include_name,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

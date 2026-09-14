@@ -10,16 +10,21 @@ from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict):
-    """State of one agent run.
+    """State of one ticket, checkpointed after every node.
 
     Reducers decide how a node's return value merges into the state:
-    - messages are appended (and updated by id) by add_message
-    - counters are summed, so a node returns the delta, not the new total
+    - messages are appended (and updated by id) by add_messages
+    - token counters are summed, so they cover the whole ticket, not one turn
+    - steps has no reducer, so it is overwritten; each turn starts it at 0 again,
+      which gives every customer message its own fresh step budget
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
-    # Number of model calls so far. Bounds the ReAct loop.
-    steps: Annotated[int, operator.add]
-    # Token usage for this run. Full accounting arrives with the observability milestone.
+    # Model calls in the current turn. Bounds the ReAct loop.
+    steps: int
+    # Token usage across the whole ticket. Full accounting arrives with the
+    # observability milestone.
     input_tokens: Annotated[int, operator.add]
     output_tokens: Annotated[int, operator.add]
+    # Set when the agent gave up and a human needs to take over.
+    escalated: bool
