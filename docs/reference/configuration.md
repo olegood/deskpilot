@@ -63,6 +63,12 @@ Three roles are configured independently: `AGENT`, `GUARD`, and `JUDGE`. Each su
 | `NUM_CTX` | `num_ctx` | ignored |
 | `REASONING` | `reasoning` (sent as `think`) | rejected when `true` |
 
+## Tools
+
+| Variable | Default | Description |
+|---|---|---|
+| `DESKPILOT_TOOLS__MAX_ORDERS_LISTED` | `10` | How many orders `list_orders` returns. A cap, not a tool argument, so the model cannot raise it. When it truncates, the tool says so. |
+
 ## Embeddings
 
 | Variable | Default | Description |

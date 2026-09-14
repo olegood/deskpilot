@@ -25,13 +25,6 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def embeddings(agent_settings: Settings) -> Embeddings:
-    """A fresh embedding model per test.
-
-    Not session-scoped: the Ollama client pools async HTTP connections bound to the
-    event loop they were opened on, and each test runs in its own loop. Sharing one
-    client makes the second test fail with "Event loop is closed". Building it is
-    cheap, it makes no network call.
-    """
     return build_embeddings(agent_settings)
 
 

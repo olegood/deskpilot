@@ -154,7 +154,8 @@ Tools live in `src/deskpilot/tools/` and are registered in `ALL_TOOLS`.
 ### Rules every tool follows
 
 - **The model passes business arguments only.** Identity and dependencies come from
-  the context.
+  the context. If the context already answers an argument, the argument should not
+  exist.
 - **Return text written for the model,** not raw rows. The tool decides what the
   model is allowed to know.
 - **Enforce ownership in the query,** so out-of-scope rows are never loaded. Tools that read shared reference data, such as `search_policy`, have no owner to check.
@@ -170,6 +171,21 @@ Tools live in `src/deskpilot/tools/` and are registered in `ALL_TOOLS`.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `get_order` | `order_number` | Status, date, tracking number, total, and items for one of the acting customer's orders |
+| `list_orders` | `status` (optional enum) | One line per order, newest first, capped and honest about it |
+| `get_customer` | none | The acting customer's name, region, membership tier, and order count |
+| `search_policy` | `question` | The closest passages from the published policies |
+
+Three details worth copying into any tool you add:
+
+- **`get_customer` takes no arguments.** The account it describes comes from the
+  context, so there is no parameter through which the model could ask about somebody
+  else ([D-037](../decisions.md#d-037-a-tool-takes-no-argument-it-can-get-from-the-context)).
+- **`list_orders` says when it truncated.** A model shown ten of fourteen orders
+  will otherwise report ten as the total
+  ([D-038](../decisions.md#d-038-a-truncated-list-says-that-it-is-truncated)).
+- **`status` is an enum, not a string.** The model sees the five valid values and
+  cannot invent "in transit"
+  ([D-040](../decisions.md#d-040-enum-arguments-are-typed-not-free-text)).
 | `search_policy` | `question` | The most relevant passages of Acme Gear's published policies, or a statement that the policy does not cover it. See the [policy knowledge base](policy-search.md). |
 
 ### Adding a tool

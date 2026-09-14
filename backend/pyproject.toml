@@ -38,7 +38,7 @@ markers = [
     "integration: needs real external services such as Ollama or Postgres",
 ]
 # Integration tests are skipped by default. Run them with: uv run pytest -m integration
-addopts = "-ra --strict-markers --import-mode=importlib -m 'not integration'"
+addopts = "-ra --strict-markers --import-mode=importlib -m 'not integration' -v"
 
 [tool.ruff]
 line-length = 100

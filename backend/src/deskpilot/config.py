@@ -99,6 +99,21 @@ class EmbeddingSettings(BaseModel):
         return f"{self.model}|{self.document_prefix}|{self.dimensions}"
 
 
+class ToolSettings(BaseModel):
+    """Limits that protect the context window from a tool's own output.
+
+    A tool that returns everything it finds will eventually return more than the
+    model can read, and Ollama truncates silently when that happens. These caps are
+    set here rather than taken as tool arguments, so the model cannot raise them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Orders returned by list_orders. Enough to cover "my recent orders" without
+    # crowding out the rest of the conversation.
+    max_orders_listed: int = Field(default=10, gt=0)
+
+
 class PolicySearchSettings(BaseModel):
     """How the agent searches the policy knowledge base."""
 
@@ -174,6 +189,7 @@ class Settings(BaseSettings):
         timeout_s=300.0,
     )
     embeddings: EmbeddingSettings = EmbeddingSettings()
+    tools: ToolSettings = ToolSettings()
     policy_search: PolicySearchSettings = PolicySearchSettings()
     database: DatabaseSettings = DatabaseSettings()
 

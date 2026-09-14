@@ -409,3 +409,47 @@ passages carries the same digest and fingerprint.
 and let the last row win, so a document whose passages disagreed — a half-finished
 rebuild — reported itself as current. Comparing the whole set makes a partial state
 visible instead of hiding it.
+
+---
+
+### D-037: A tool takes no argument it can get from the context
+
+**Date:** 2026-09-14
+
+**Decision.** `get_customer` has no parameters. The schema the model sees is an empty object; the account it describes comes entirely from `AgentContext`.
+
+**Why.** The obvious signature, `get_customer(email)`, would put the identity back under the model's control and undo [D-020](#d-020-identity-travels-in-the-graph-context-never-in-state). A parameter the model must never choose should not exist.
+
+**Consequences.** The rule generalises: before adding an argument, check whether the context already answers it. It also makes the tool impossible to misuse by accident, which matters more once ABAC arrives and a wrong argument would be a policy violation rather than a wrong answer.
+
+---
+
+### D-038: A truncated list says that it is truncated
+
+**Date:** 2026-09-14
+
+**Decision.** When `list_orders` returns fewer orders than exist, it appends a line saying how many of how many were shown.
+
+**Why.** A model handed ten of fourteen orders has no way to know the list was cut, and will tell the customer they have ten. The tool knows, so the tool says. Silent truncation turns a display limit into a false statement to a customer.
+
+**Consequences.** Any future tool that caps its output owes the model the same disclosure.
+
+---
+
+### D-039: Output caps are settings, not tool arguments
+
+**Date:** 2026-09-14
+
+**Decision.** `max_orders_listed` lives in `ToolSettings`, reaches the tool through `AgentContext`, and is not exposed to the model.
+
+**Why.** A limit exists to protect the context window from the tool's own output. Letting the model raise it defeats the purpose, and Ollama truncates a too-long prompt silently, so the failure would be invisible. Passing it through the context rather than reading a global also lets a test vary it, which is how the truncation behaviour is tested.
+
+---
+
+### D-040: Enum arguments are typed, not free text
+
+**Date:** 2026-09-14
+
+**Decision.** `list_orders(status: OrderStatus | None)` takes the enum, so the JSON schema the model sees lists the five valid values.
+
+**Why.** A string parameter invites "in transit", "on its way", or "shipped?" and turns a typo into an empty result the model then explains away. With an enum, an invalid value is rejected before the tool runs and the model gets a correctable error instead of a plausible wrong answer.

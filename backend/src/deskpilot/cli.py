@@ -60,6 +60,7 @@ class Runtime:
             session_factory=self.sessions,
             embeddings=self.embeddings,
             policy_search=self.settings.policy_search,
+            tools=self.settings.tools,
         )
 
 

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from langchain_core.embeddings import Embeddings
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deskpilot.config import PolicySearchSettings
+from deskpilot.config import PolicySearchSettings, ToolSettings
 
 
 @dataclass(frozen=True)
@@ -33,3 +33,4 @@ class AgentContext:
     # Passed in rather than read from a global, so a tool's behaviour is decided by
     # its caller and a test can vary it without touching the environment.
     policy_search: PolicySearchSettings = field(default_factory=PolicySearchSettings)
+    tools: ToolSettings = field(default_factory=ToolSettings)
