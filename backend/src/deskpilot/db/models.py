@@ -69,6 +69,17 @@ class CustomerTier(StrEnum):
     GOLD = "gold"
 
 
+class TicketCategory(StrEnum):
+    """What a ticket is about. Decided by the classifier, and only ever advisory."""
+
+    SHIPPING = "shipping"
+    RETURN_OR_REFUND = "return_or_refund"
+    WARRANTY = "warranty"
+    ORDER_STATUS = "order_status"
+    PRODUCT = "product"
+    OTHER = "other"
+
+
 class TicketStatus(StrEnum):
     # The agent (or a human) still owes the customer a reply.
     OPEN = "open"
@@ -122,6 +133,11 @@ class Ticket(Base):
     subject: Mapped[str] = mapped_column(String(200))
     status: Mapped[TicketStatus] = mapped_column(
         str_enum(TicketStatus, "ticket_status"), index=True
+    )
+    # Filled in by the classifier on the first turn. Nullable because a ticket exists
+    # for a moment before it has been read, and because classification can fail.
+    category: Mapped[TicketCategory | None] = mapped_column(
+        str_enum(TicketCategory, "ticket_category"), index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

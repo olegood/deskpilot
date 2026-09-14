@@ -24,13 +24,20 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
+from deskpilot.graph.classify import classify, first_customer_message, parse_category
 from deskpilot.graph.context import AgentContext
-from deskpilot.graph.prompts import STEP_BUDGET_MESSAGE, SUPPORT_AGENT_PROMPT, TOOL_FAILURE_MESSAGE
+from deskpilot.graph.prompts import (
+    CATEGORY_HINT,
+    STEP_BUDGET_MESSAGE,
+    SUPPORT_AGENT_PROMPT,
+    TOOL_FAILURE_MESSAGE,
+)
 from deskpilot.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
 AGENT: Final = "agent"
+CLASSIFY: Final = "classify"
 TOOLS: Final = "tools"
 OVER_BUDGET: Final = "over_budget"
 
@@ -50,21 +57,38 @@ def build_agent_graph(
     tools: Sequence[BaseTool],
     max_steps: int,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
+    classifier: BaseChatModel | None = None,
 ) -> CompiledStateGraph[AgentState, AgentContext, AgentState, AgentState]:
     """Build and compile the agent graph.
 
     With a checkpointer, state is persisted per thread and a ticket can be resumed
     across turns and across restarts. Without one, the run is in-memory only.
+
+    Without a classifier the classify node is still present but does nothing, so the
+    graph shape is the same in tests as in production.
     """
     bound_model = model.bind_tools(list(tools))
+
+    async def classify_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
+        """Label the ticket, once, from the message it opened with."""
+        if classifier is None:
+            return {}
+        result = await classify(classifier, first_customer_message(state["messages"]))
+        logger.info("classified ticket as %s", result.category.value)
+        return {
+            "category": result.category.value,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+        }
 
     async def agent(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         """Call the model once, with the tools bound."""
         # The system prompt is prepended per call and never stored in state, so nothing
         # that appends to the conversation can push it out or edit it away.
-        response = await bound_model.ainvoke(
-            [SystemMessage(SUPPORT_AGENT_PROMPT), *state["messages"]], config
-        )
+        prompt = SUPPORT_AGENT_PROMPT
+        if (category := parse_category(state.get("category"))) is not None:
+            prompt = f"{prompt}\n{CATEGORY_HINT.format(category=category.value)}"
+        response = await bound_model.ainvoke([SystemMessage(prompt), *state["messages"]], config)
         usage = getattr(response, "usage_metadata", None) or {}
         return {
             "messages": [response],
@@ -88,7 +112,12 @@ def build_agent_graph(
             return OVER_BUDGET
         return TOOLS
 
+    def needs_classifying(state: AgentState) -> Literal["classify", "agent"]:
+        """Classify only the first turn; later turns keep the ticket's category."""
+        return AGENT if parse_category(state.get("category")) is not None else CLASSIFY
+
     builder = StateGraph(AgentState, context_schema=AgentContext)
+    builder.add_node(CLASSIFY, classify_node)
     builder.add_node(AGENT, agent)
     # ToolNode injects AgentContext into tools as ToolRuntime, runs parallel tool
     # calls concurrently, and turns unknown tool names and bad arguments into error
@@ -96,7 +125,8 @@ def build_agent_graph(
     builder.add_node(TOOLS, ToolNode(list(tools), handle_tool_errors=on_tool_error))
     builder.add_node(OVER_BUDGET, over_budget)
 
-    builder.add_edge(START, AGENT)
+    builder.add_conditional_edges(START, needs_classifying)
+    builder.add_edge(CLASSIFY, AGENT)
     builder.add_conditional_edges(AGENT, route)
     builder.add_edge(TOOLS, AGENT)
     builder.add_edge(OVER_BUDGET, END)

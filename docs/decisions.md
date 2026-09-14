@@ -453,3 +453,59 @@ visible instead of hiding it.
 **Decision.** `list_orders(status: OrderStatus | None)` takes the enum, so the JSON schema the model sees lists the five valid values.
 
 **Why.** A string parameter invites "in transit", "on its way", or "shipped?" and turns a typo into an empty result the model then explains away. With an enum, an invalid value is rejected before the tool runs and the model gets a correctable error instead of a plausible wrong answer.
+
+---
+
+### D-041: Classification runs once per ticket, not once per turn
+
+**Date:** 2026-09-14
+
+**Decision.** A `classify` node sits between START and the agent loop. A conditional edge skips it when the state already holds a category, so it runs on the first turn only.
+
+**Why.** What a ticket is about is a property of the ticket, not of each message. "So what happens now?" on the third turn classifies as nothing useful on its own. Running once also means the cost is paid once, and the label stays stable for reporting.
+
+**Consequences.** A ticket that changes subject mid-conversation keeps its original label. That is acceptable while the label is advisory; it would not be if the label gated behaviour.
+
+---
+
+### D-042: The category is advisory, and does not decide which tools the agent gets
+
+**Date:** 2026-09-14
+
+**Decision.** The category is appended to the system prompt as a hedged hint and recorded on the ticket row. It does not filter the tool set. The earlier plan was for it to select tools; that was reversed before it was built.
+
+**Why.** Filtering tools by category turns a wrong classification into a wrong answer the agent cannot recover from: a refund question mislabelled as shipping would leave the agent without `search_policy` and no way to notice. With four read-only tools, the gain from filtering is small and the failure mode is silent. It also matters that the classifier reads untrusted customer text, so a label is something an attacker can influence; a hint they can nudge is survivable, a capability switch they can flip is not.
+
+**Consequences.** Filtering becomes worth revisiting when there are many more tools, and especially in the human-in-the-loop milestone, where keeping refund tools away from a shipping ticket is a real safety gain rather than a small prompt saving. By then the label will need to be trustworthy enough to gate on.
+
+---
+
+### D-043: The category is stored in state as a string, not as an enum
+
+**Date:** 2026-09-14
+
+**Decision.** The `category` channel is typed `str | None`, and `parse_category` converts at the edges.
+
+**Why.** Found by a crash on the second turn: `'str' object has no attribute 'value'`. A checkpoint is serialized, and a `StrEnum` written to it comes back as a plain `str`. Typing the channel as the enum would have been a lie on every turn after the first.
+
+**Consequences.** It generalises to anything else put in state. A checkpointed channel holds what the serializer can carry, and rich types have to be reconstructed on the way out. `parse_category` also turns a value from an older enum into "unclassified" rather than an exception.
+
+---
+
+### D-044: Structured output keeps the raw message
+
+**Date:** 2026-09-14
+
+**Decision.** `with_structured_output(Classification, include_raw=True)`, and the classifier returns its token usage alongside the category.
+
+**Why.** Without `include_raw`, only the parsed object comes back and the underlying `AIMessage` is discarded, taking `usage_metadata` with it. Classification would then appear free in the ticket's totals, which is exactly the kind of quiet under-counting that makes a cost budget useless.
+
+---
+
+### D-045: A failed classification degrades, it does not raise
+
+**Date:** 2026-09-14
+
+**Decision.** A model error, a malformed answer, or an empty message all produce `OTHER`, logged at warning level. The run continues.
+
+**Why.** The category is a hint. Losing it costs a little answer quality; raising from the classify node would cost the customer their reply entirely. The failure is worth recording, not worth stopping for.

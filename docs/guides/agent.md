@@ -76,7 +76,9 @@ checkpoint directly.
 
 ```mermaid
 flowchart LR
-    START([start]) --> A[agent]
+    START([start]) -->|first turn| C[classify]
+    START -->|already classified| A[agent]
+    C --> A[agent]
     A -->|no tool calls| E([end])
     A -->|tool calls, budget left| T[tools]
     A -->|budget spent| O[over_budget]
@@ -86,6 +88,7 @@ flowchart LR
 
 | Node | What it does |
 |---|---|
+| `classify` | Labels the ticket once, on its first turn, with a short structured model call |
 | `agent` | Calls the model once with the tools bound, and records token usage |
 | `tools` | LangGraph's `ToolNode`: runs the requested tool calls |
 | `over_budget` | Ends the run with a message saying a colleague will follow up |
@@ -105,6 +108,13 @@ merges in, so nodes return deltas rather than new totals.
 | `steps` | none (overwritten) | Model calls in this turn; bounds the loop |
 | `input_tokens`, `output_tokens` | `operator.add` | Usage across the whole ticket |
 | `escalated` | none (overwritten) | Set when the agent gave up and a human is needed |
+| `category` | none (overwritten) | What the ticket is about; set once, on the first turn |
+
+`category` is `NotRequired`, and a turn's input leaves the key out entirely. The
+channel has no reducer, so passing `None` each turn would wipe the label the
+classifier set. It is also held as a plain string rather than as `TicketCategory`,
+because a checkpoint is serialized and a `StrEnum` comes back from it as a `str`
+([D-043](../decisions.md#d-043-the-category-is-stored-in-state-as-a-string-not-as-an-enum)).
 
 The system prompt is prepended on every model call and never stored in state, so
 nothing that appends to the conversation can push it out or edit it away.
@@ -199,6 +209,29 @@ Three details worth copying into any tool you add:
    injected, exactly as the graph does.
 5. Add a graph test if the tool changes how the loop behaves.
 
+## Classification
+
+Every ticket is labelled once, on its first turn: `shipping`, `return_or_refund`,
+`warranty`, `order_status`, `product`, or `other`. The label is a short structured
+model call, and it is recorded both in graph state and on the ticket row, so
+`deskpilot ticket list` can show it.
+
+**The label is advisory.** It is appended to the system prompt as a hedged hint and
+nothing more. It does not choose which tools the agent gets. A wrong label should
+cost a little answer quality, never the ability to answer at all — and since the
+classifier reads customer-written text, the label is something an attacker can
+nudge. A hint they can nudge is survivable; a capability switch they can flip is not
+([D-042](../decisions.md#d-042-the-category-is-advisory-and-does-not-decide-which-tools-the-agent-gets)).
+
+Classification never fails the run. A model error, a malformed answer, or an empty
+message all produce `other` and a warning in the log
+([D-045](../decisions.md#d-045-a-failed-classification-degrades-it-does-not-raise)).
+
+Its tokens count towards the ticket, which takes a small deliberate step:
+`with_structured_output` is called with `include_raw=True`, because without it the
+parsed object is all that comes back and the call's usage is silently lost
+([D-044](../decisions.md#d-044-structured-output-keeps-the-raw-message)).
+
 ## Failure handling
 
 | Failure | What happens |
@@ -207,6 +240,7 @@ Three details worth copying into any tool you add:
 | The model invents a tool name | `ToolNode` returns an error message listing the real tools, and the run continues. |
 | The model sends malformed arguments | Same: an error message goes back and the model can correct itself. |
 | The model keeps calling tools | The step budget ends the run with an escalation message. |
+| The classifier fails or answers nonsense | The ticket is labelled `other` and the run continues. |
 
 In every case the run finishes with something to say to the customer. Nothing
 crashes.

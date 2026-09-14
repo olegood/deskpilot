@@ -108,10 +108,15 @@ checkpoint tables under `thread_id` and is not duplicated here
 | `reference` | What the customer sees and types, e.g. `TCK-0007` |
 | `thread_id` | The key this ticket's checkpoints are stored under |
 | `status` | `open`, `awaiting_customer`, `escalated`, or `resolved` |
+| `category` | What the ticket is about, set by the classifier on the first turn. Nullable |
 | `subject` | Written by the customer. Untrusted text, not yet shown to the model |
 
 The reference and the thread id are deliberately different values
 ([D-028](../decisions.md#d-028-the-thread-id-is-separate-from-the-public-reference)).
+
+`status` and `category` are projections of what the agent run decided: the graph's
+state is the working copy, and these columns exist so tickets can be listed and
+filtered without reading every checkpoint.
 
 Ticket functions in `deskpilot/tickets.py` never commit; the caller owns the
 transaction ([D-031](../decisions.md#d-031-services-do-not-manage-transactions)).

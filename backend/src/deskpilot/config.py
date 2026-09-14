@@ -29,6 +29,7 @@ class ModelRole(StrEnum):
     """Each role has its own model settings and can switch provider independently."""
 
     AGENT = "agent"
+    CLASSIFIER = "classifier"
     GUARD = "guard"
     JUDGE = "judge"
 
@@ -178,6 +179,12 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
 
     agent: ModelSettings = ModelSettings(model="qwen3.6:35b")
+    classifier: ModelSettings = ModelSettings(
+        model="qwen3.6:35b",
+        # One short structured answer. A long one means the model ignored the schema.
+        max_output_tokens=64,
+        timeout_s=30.0,
+    )
     guard: ModelSettings = ModelSettings(
         model="qwen3.6:35b",
         max_output_tokens=256,
@@ -201,6 +208,8 @@ class Settings(BaseSettings):
         match role:
             case ModelRole.AGENT:
                 return self.agent
+            case ModelRole.CLASSIFIER:
+                return self.classifier
             case ModelRole.GUARD:
                 return self.guard
             case ModelRole.JUDGE:

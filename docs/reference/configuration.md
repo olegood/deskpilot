@@ -28,7 +28,7 @@ Invalid configuration fails at startup, not on first use.
 
 ## Model roles
 
-Three roles are configured independently: `AGENT`, `GUARD`, and `JUDGE`. Each supports these fields, set as `DESKPILOT_<ROLE>__<FIELD>`:
+Four roles are configured independently: `AGENT`, `CLASSIFIER`, `GUARD`, and `JUDGE`. Each supports these fields, set as `DESKPILOT_<ROLE>__<FIELD>`:
 
 | Field | Type | Description |
 |---|---|---|
@@ -42,15 +42,18 @@ Three roles are configured independently: `AGENT`, `GUARD`, and `JUDGE`. Each su
 
 ### Defaults per role
 
-| Field | Agent | Guard | Judge |
-|---|---|---|---|
-| `PROVIDER` | `ollama` | `ollama` | `ollama` |
-| `MODEL` | `qwen3.6:35b` | `qwen3.6:35b` | `gpt-oss:20b` |
-| `TEMPERATURE` | 0.0 | 0.0 | 0.0 |
-| `MAX_OUTPUT_TOKENS` | 2048 | 256 | 1024 |
-| `TIMEOUT_S` | 120 | 30 | 300 |
-| `NUM_CTX` | 32768 | 32768 | 32768 |
-| `REASONING` | `false` | `false` | `false` |
+| Field | Agent | Classifier | Guard | Judge |
+|---|---|---|---|---|
+| `PROVIDER` | `ollama` | `ollama` | `ollama` | `ollama` |
+| `MODEL` | `qwen3.6:35b` | `qwen3.6:35b` | `qwen3.6:35b` | `gpt-oss:20b` |
+| `TEMPERATURE` | 0.0 | 0.0 | 0.0 | 0.0 |
+| `MAX_OUTPUT_TOKENS` | 2048 | 64 | 256 | 1024 |
+| `TIMEOUT_S` | 120 | 30 | 30 | 300 |
+| `NUM_CTX` | 32768 | 32768 | 32768 | 32768 |
+| `REASONING` | `false` | `false` | `false` | `false` |
+
+The classifier's 64-token limit is deliberate: it answers with one word inside a
+JSON object, and a longer answer means it ignored the schema.
 
 ### How fields map to providers
 

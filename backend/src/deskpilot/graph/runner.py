@@ -18,7 +18,9 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 
 from deskpilot.config import ModelRole, Settings, get_settings
+from deskpilot.db.models import TicketCategory
 from deskpilot.graph.agent import build_agent_graph
+from deskpilot.graph.classify import parse_category
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.state import AgentState
 from deskpilot.llm import build_chat_model
@@ -43,6 +45,8 @@ class AgentRun:
     input_tokens: int = 0
     output_tokens: int = 0
     escalated: bool = False
+    # What the classifier made of the ticket. None if it has not run or failed.
+    category: TicketCategory | None = None
 
     @property
     def total_tokens(self) -> int:
@@ -100,6 +104,8 @@ async def run_turn(
         "input_tokens": 0,
         "output_tokens": 0,
         "escalated": False,
+        # category is deliberately absent: the channel has no reducer, so including
+        # it would overwrite the category the classifier set on the first turn.
     }
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
     # The context is passed here, outside the state and outside the messages, so it
@@ -116,6 +122,7 @@ async def run_turn(
         input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
         escalated=result["escalated"],
+        category=parse_category(result.get("category")),
     )
 
 
@@ -133,5 +140,6 @@ async def run_agent(
         tools=ALL_TOOLS,
         max_steps=settings.max_agent_steps,
         checkpointer=checkpointer,
+        classifier=build_chat_model(ModelRole.CLASSIFIER, settings),
     )
     return await run_turn(graph, message, context, thread_id)

@@ -18,7 +18,7 @@ from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackMana
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -107,6 +107,48 @@ class ScriptedChatModel(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         return self._next(messages)
+
+
+class ScriptedClassifier(BaseChatModel):
+    """Stands in for the classifier model.
+
+    with_structured_output is overridden rather than relying on the base
+    implementation, which would need real tool calling. It returns the same shape
+    the real one does with include_raw=True, so the token accounting in classify()
+    is exercised too.
+    """
+
+    category: str = "other"
+    # Raise instead of answering, to exercise the fallback path.
+    fails: bool = False
+    calls: list[list[BaseMessage]] = Field(default_factory=list)
+
+    @property
+    def _llm_type(self) -> str:
+        return "scripted-classifier"
+
+    def with_structured_output(
+        self, schema: Any, *, include_raw: bool = False, **kwargs: Any
+    ) -> Runnable[LanguageModelInput, Any]:
+        def answer(messages: LanguageModelInput) -> Any:
+            if isinstance(messages, list):
+                self.calls.append([m for m in messages if isinstance(m, BaseMessage)])
+            if self.fails:
+                raise RuntimeError("classifier is unavailable")
+            parsed = schema(category=self.category)
+            raw = AIMessage(f'{{"category": "{self.category}"}}', usage_metadata=usage(7, 3))
+            return {"raw": raw, "parsed": parsed, "parsing_error": None} if include_raw else parsed
+
+        return RunnableLambda(answer)
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        raise NotImplementedError("the classifier is only used through structured output")
 
 
 def scripted(responses: Sequence[AIMessage]) -> ScriptedChatModel:

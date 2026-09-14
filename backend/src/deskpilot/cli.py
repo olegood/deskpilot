@@ -95,7 +95,8 @@ def show_answer(result: AgentRun, verbose: bool) -> None:
         typer.secho("This ticket has been escalated to a human.", fg=typer.colors.YELLOW)
     if verbose:
         typer.secho(
-            f"\n[{result.steps} model call(s) this turn | "
+            f"\n[{result.category.value if result.category else 'unclassified'} | "
+            f"{result.steps} model call(s) this turn | "
             f"tools: {', '.join(result.tool_calls) or 'none'} | "
             f"ticket tokens: {result.input_tokens} in, {result.output_tokens} out]",
             fg=typer.colors.BRIGHT_BLACK,
@@ -151,7 +152,7 @@ def ticket_new_command(
         async with runtime() as rt, rt.sessions() as session:
             ticket = await create_ticket(session, customer, subject)
             result = await respond(rt, ticket, customer, message)
-            set_status(ticket, status_after(result))
+            record_outcome(ticket, result)
             await session.commit()
             return ticket, result
 
@@ -175,7 +176,7 @@ def ticket_reply_command(
             if ticket.status is TicketStatus.RESOLVED:
                 raise TicketError(f"{ticket.reference} is resolved; open a new ticket instead")
             result = await respond(rt, ticket, customer, message)
-            set_status(ticket, status_after(result))
+            record_outcome(ticket, result)
             await session.commit()
             return result
 
@@ -199,8 +200,9 @@ def ticket_list_command(
         typer.echo("No tickets yet.")
         return
     for ticket in tickets:
+        category = ticket.category.value if ticket.category else "-"
         typer.echo(
-            f"{ticket.reference}  {ticket.status.value:<18}  "
+            f"{ticket.reference}  {ticket.status.value:<18}  {category:<17}  "
             f"{ticket.customer.email:<28}  {ticket.subject}"
         )
 
@@ -221,7 +223,10 @@ def ticket_show_command(
             return ticket, await load_conversation(rt, ticket)
 
     ticket, history = run(body)
-    typer.secho(f"{ticket.reference}  {ticket.status.value}  {ticket.subject}", bold=True)
+    category = ticket.category.value if ticket.category else "unclassified"
+    typer.secho(
+        f"{ticket.reference}  {ticket.status.value}  {category}  {ticket.subject}", bold=True
+    )
     for message in history:
         if isinstance(message, HumanMessage):
             typer.secho(f"\ncustomer: {message.text}", fg=typer.colors.CYAN)
@@ -334,8 +339,17 @@ def ask_command(
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 
-def status_after(result: AgentRun) -> TicketStatus:
-    return TicketStatus.ESCALATED if result.escalated else TicketStatus.AWAITING_CUSTOMER
+def record_outcome(ticket: Ticket, result: AgentRun) -> None:
+    """Project what the run decided back onto the queryable ticket row.
+
+    The graph's state is the working copy; these columns exist so tickets can be
+    listed and filtered without reading every checkpoint.
+    """
+    set_status(
+        ticket, TicketStatus.ESCALATED if result.escalated else TicketStatus.AWAITING_CUSTOMER
+    )
+    if result.category is not None:
+        ticket.category = result.category
 
 
 async def respond(rt: Runtime, ticket: Ticket, customer_email: str, message: str) -> AgentRun:
