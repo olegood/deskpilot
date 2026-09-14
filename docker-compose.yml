@@ -6,7 +6,7 @@ name: deskpilot
 
 services:
   postgres:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     restart: unless-stopped
     environment:
       POSTGRES_USER: deskpilot

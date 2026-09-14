@@ -2,13 +2,13 @@
 
 Working with PostgreSQL, migrations, and seed data.
 
-> Last verified against: milestone 1 (complete).
+> Last verified against: milestone 2, step 2.2.
 
 ## Overview
 
 | Item | Value |
 |---|---|
-| Server | PostgreSQL 18 in Docker Compose, bound to `127.0.0.1:5432` |
+| Server | PostgreSQL 18 with pgvector, in Docker Compose, bound to `127.0.0.1:5432` |
 | Development database | `deskpilot` |
 | Test database | `deskpilot_test`, used only by integration tests |
 | User | `deskpilot` |
@@ -183,3 +183,7 @@ docker compose exec postgres psql -U deskpilot -d deskpilot -c "CREATE DATABASE 
 **`relation "checkpoints" does not exist`.** Run `uv run deskpilot db setup`.
 
 **A generated migration wants to drop the checkpoint tables.** The `include_name` filter in `migrations/env.py` is missing or was bypassed. Never apply such a migration.
+
+**`type "vector" does not exist`.** The database is running a plain `postgres` image rather than `pgvector/pgvector`. Check `docker-compose.yml`, then `docker compose up -d --force-recreate postgres`. Existing data survives, since only the image changes.
+
+**`permission denied to create extension "vector"`.** `CREATE EXTENSION` needs a superuser. The `POSTGRES_USER` of the pgvector image is one, so this usually means the migration is running as a different user.

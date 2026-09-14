@@ -13,7 +13,8 @@ Every tool follows the same rules:
 from langchain_core.tools import BaseTool
 
 from deskpilot.tools.orders import get_order
+from deskpilot.tools.policy import search_policy
 
-ALL_TOOLS: list[BaseTool] = [get_order]
+ALL_TOOLS: list[BaseTool] = [get_order, search_policy]
 
-__all__ = ["ALL_TOOLS", "get_order"]
+__all__ = ["ALL_TOOLS", "get_order", "search_policy"]

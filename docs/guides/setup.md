@@ -2,7 +2,7 @@
 
 Sets up a development machine from zero. Follow the steps in order.
 
-> Last verified against: milestone 1 (complete).
+> Last verified against: milestone 2, step 2.2.
 
 ## Target machine
 
@@ -97,9 +97,10 @@ uv sync
 uv run alembic upgrade head
 uv run deskpilot db setup
 uv run deskpilot db seed
+uv run deskpilot policy index
 ```
 
-`uv sync` installs the Python version pinned in `.python-version` (if missing) and every dependency exactly as recorded in `uv.lock`. `alembic upgrade head` creates the application tables, `deskpilot db setup` creates LangGraph's checkpoint tables, and `deskpilot db seed` loads the Acme Gear sample data.
+`uv sync` installs the Python version pinned in `.python-version` (if missing) and every dependency exactly as recorded in `uv.lock`. `alembic upgrade head` creates the application tables, `deskpilot db setup` creates LangGraph's checkpoint tables, `deskpilot db seed` loads the Acme Gear sample data, and `deskpilot policy index` embeds the policy documents so the agent can search them.
 
 Apart from the password, the defaults in `backend/.env.example` work as is. See the [configuration reference](../reference/configuration.md) for all options.
 
@@ -128,8 +129,16 @@ uv run deskpilot ticket reply TCK-0001 "Thanks. What about ORD-1031?" \
 ```
 
 The first should report that the order has shipped and show that `get_order` was
-called. The second is a separate process picking the same conversation back up. See
-the [agent guide](agent.md) for more to try.
+called. The second is a separate process picking the same conversation back up.
+
+Then try a policy question, which uses a different tool:
+
+```bash
+uv run deskpilot ask "How long do I have to return a tent?" \
+    --as noah.kim@example.com --verbose
+```
+
+See the [agent guide](agent.md) for more to try.
 
 ## What should be running
 

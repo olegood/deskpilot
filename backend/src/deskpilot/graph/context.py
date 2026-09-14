@@ -11,9 +11,12 @@ context carries a full principal with attributes, and every tool checks it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from langchain_core.embeddings import Embeddings
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from deskpilot.config import PolicySearchSettings
 
 
 @dataclass(frozen=True)
@@ -24,3 +27,9 @@ class AgentContext:
     # session, never from the ticket text or the model.
     customer_email: str
     session_factory: async_sessionmaker[AsyncSession]
+    # Used by tools that search the policy index. A dependency like the session
+    # factory, not a model the agent reasons with.
+    embeddings: Embeddings | None = None
+    # Passed in rather than read from a global, so a tool's behaviour is decided by
+    # its caller and a test can vary it without touching the environment.
+    policy_search: PolicySearchSettings = field(default_factory=PolicySearchSettings)

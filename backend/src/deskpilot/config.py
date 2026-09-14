@@ -76,6 +76,47 @@ class EmbeddingSettings(BaseModel):
 
     provider: Literal["ollama"] = "ollama"
     model: str = Field(default="nomic-embed-text", min_length=1)
+    # Must match the model's output size and the vector column in the database.
+    # Changing either one without the other fails loudly at indexing time.
+    dimensions: int = Field(default=768, gt=0)
+    timeout_s: float = Field(default=60.0, gt=0)
+    # nomic-embed-text is trained with task prefixes and expects them. Omitting them
+    # produces different vectors and worse retrieval, with no error raised. Other
+    # models want no prefix, or a different one, so both sides are configurable.
+    document_prefix: str = "search_document: "
+    query_prefix: str = "search_query: "
+    # Ollama's model card advertises 2048, but nomic-embed-text handles 8192. Long
+    # passages are otherwise truncated without warning.
+    num_ctx: int = Field(default=8192, ge=512)
+
+    @property
+    def fingerprint(self) -> str:
+        """Identifies everything that changes the vectors for the same text.
+
+        Stored alongside each embedding, so switching model, prefix, or dimensions
+        marks the index stale instead of silently mixing incomparable vectors.
+        """
+        return f"{self.model}|{self.document_prefix}|{self.dimensions}"
+
+
+class PolicySearchSettings(BaseModel):
+    """How the agent searches the policy knowledge base."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # Where the markdown source documents live, relative to backend/.
+    directory: Path = Path("policies")
+    # Passages returned per search. Few enough that the model reads them all.
+    top_k: int = Field(default=4, gt=0)
+    # Cosine distance above which a passage is treated as irrelevant. 0 is identical
+    # and 2 is opposite; a wrong-topic passage usually lands above 0.6.
+    max_distance: float = Field(default=0.6, ge=0.0, le=2.0)
+    # Chunks are split at markdown headings, then further if a section is long.
+    max_chunk_chars: int = Field(default=1200, gt=0)
+
+    @property
+    def path(self) -> Path:
+        return BACKEND_DIR / self.directory
 
 
 class DatabaseSettings(BaseModel):
@@ -133,6 +174,7 @@ class Settings(BaseSettings):
         timeout_s=300.0,
     )
     embeddings: EmbeddingSettings = EmbeddingSettings()
+    policy_search: PolicySearchSettings = PolicySearchSettings()
     database: DatabaseSettings = DatabaseSettings()
 
     # How many times the agent may call the model in one run before it gives up.

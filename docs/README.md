@@ -11,6 +11,7 @@
 | [Ollama guide](guides/ollama.md) | Running local models: settings, memory, troubleshooting |
 | [Development guide](guides/development.md) | Daily workflow: tests, linting, dependencies, commits |
 | [Database guide](guides/database.md) | PostgreSQL, migrations, schema conventions, seed data |
+| [Policy knowledge base](guides/policy-search.md) | The policy documents, chunking, embeddings, and search |
 | [Agent guide](guides/agent.md) | The graph, tools, where identity lives, and how to run the agent |
 | [Configuration reference](reference/configuration.md) | Every setting and environment variable |
 

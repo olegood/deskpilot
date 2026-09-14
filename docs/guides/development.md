@@ -2,7 +2,7 @@
 
 Daily workflow for working on Deskpilot.
 
-> Last verified against: milestone 1 (complete).
+> Last verified against: milestone 2, step 2.2.
 
 ## Current layout
 
@@ -13,6 +13,7 @@ deskpilot/
 ├── infra/
 │   └── postgres/init/         # SQL run once when the database volume is created
 ├── backend/
+│   ├── policies/              # policy markdown: the source of truth for search
 │   ├── pyproject.toml         # project metadata, tool configuration
 │   ├── uv.lock                # exact dependency versions (committed)
 │   ├── .python-version        # Python 3.13
@@ -25,6 +26,7 @@ deskpilot/
 │   │   ├── cli.py             # `deskpilot` command-line interface
 │   │   ├── db/                # models, sessions, seed data, checkpointer
 │   │   ├── tickets.py         # ticket lifecycle
+│   │   ├── knowledge/         # policy chunking, indexing, search
 │   │   ├── graph/             # state, context, prompts, the loop, the runner
 │   │   └── tools/             # what the agent can call
 │   └── tests/
@@ -57,6 +59,7 @@ Run from `backend/`:
 | Apply migrations | `uv run alembic upgrade head` |
 | Create LangGraph's checkpoint tables | `uv run deskpilot db setup` |
 | Reseed the development database | `uv run deskpilot db seed --reset` |
+| Rebuild the policy index | `uv run deskpilot policy index` |
 | Ask the agent something | `uv run deskpilot ask "..." --as noah.kim@example.com -v` |
 | Start a saved conversation | `uv run deskpilot ticket new "..." --as ... --subject "..."` |
 | Run only the graph tests | `uv run pytest tests/graph` |

@@ -2,7 +2,7 @@
 
 How the agent works, how to run it, and how to add to it.
 
-> Last verified against: milestone 1 (complete).
+> Last verified against: milestone 2, step 2.2.
 
 ## What the agent can do today
 
@@ -51,6 +51,8 @@ Things worth trying:
 | `ask "what about ORD-1001?" --as noah.kim@example.com` | Another customer's order: not found |
 | `ask "what about ORD-1001?" --as ana.garcia@example.com` | The same order, for its owner |
 | `ask "hello, are you a human?" --as noah.kim@example.com` | An answer with no tool call |
+| `ask "how long do I have to return a tent?" --as noah.kim@example.com -v` | A policy lookup |
+| `ask "what is the atomic mass of tungsten?" --as noah.kim@example.com -v` | A question the policy does not cover |
 | `ticket show TCK-0001 --as ana.garcia@example.com` | Another customer's ticket: refused |
 
 ## Tickets and threads
@@ -155,7 +157,7 @@ Tools live in `src/deskpilot/tools/` and are registered in `ALL_TOOLS`.
   the context.
 - **Return text written for the model,** not raw rows. The tool decides what the
   model is allowed to know.
-- **Enforce ownership in the query,** so out-of-scope rows are never loaded.
+- **Enforce ownership in the query,** so out-of-scope rows are never loaded. Tools that read shared reference data, such as `search_policy`, have no owner to check.
 - **Give one answer for "does not exist" and "not yours",** so the agent cannot be
   used to probe which identifiers are real ([D-021](../decisions.md#d-021-not-found-and-not-yours-give-the-same-answer)).
 - **Leave untrusted text out** until the security milestone. `orders.notes` is typed
@@ -168,6 +170,7 @@ Tools live in `src/deskpilot/tools/` and are registered in `ALL_TOOLS`.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `get_order` | `order_number` | Status, date, tracking number, total, and items for one of the acting customer's orders |
+| `search_policy` | `question` | The most relevant passages of Acme Gear's published policies, or a statement that the policy does not cover it. See the [policy knowledge base](policy-search.md). |
 
 ### Adding a tool
 

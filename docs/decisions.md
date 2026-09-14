@@ -328,3 +328,84 @@ that references the old one rather than editing it.
 **Why.** Found the hard way: `set_status` opened its own transaction and crashed with "a transaction is already begun on this session", because the preceding `SELECT` had already started one implicitly. Beyond that, one command needs to create a ticket, run the agent, and record the resulting status as a single unit; a service that commits halfway makes that impossible.
 
 **Consequences.** `seed()` is the exception. It is a standalone bulk load rather than a service call, and being atomic on its own is the point of it.
+
+---
+
+### D-032: Policy documents are markdown files, and the index is derived
+
+**Date:** 2026-09-14
+
+**Decision.** The policies live as markdown under `backend/policies/`. The
+`policy_chunks` table is built from them by `deskpilot policy index` and can be
+deleted and rebuilt at any time.
+
+**Why.** A policy is written and reviewed by people, so it belongs in files that
+diff well in a pull request. Making the database derived means there is one source
+of truth, and a wrong answer can always be traced back to a line in a file.
+
+**Consequences.** The index can be out of date with respect to the files, so
+staleness has to be detectable — hence the digest and fingerprint columns.
+
+---
+
+### D-033: Passages are split at headings, not at a fixed size
+
+**Date:** 2026-09-14
+
+**Decision.** Each markdown section becomes one passage. Over-long sections are split
+further, but only at paragraph boundaries. Every passage repeats its heading path.
+
+**Why.** A policy document is already organised around the questions people ask
+("Return window", "Lost parcels"), so the author's structure beats any window we
+could slide over the text. Repeating the heading matters twice over: retrieved
+alone, "within 30 days of delivery" is ambiguous, and the heading words measurably
+improve the embedding match.
+
+**Consequences.** The chunking depends on the documents being well structured. A
+policy file with no headings produces no passages, and indexing says so rather than
+silently indexing nothing.
+
+---
+
+### D-034: Embeddings carry a fingerprint, not just a model name
+
+**Date:** 2026-09-14
+
+**Decision.** Each passage stores `model|document_prefix|dimensions`. Any change to
+that string marks every affected document stale.
+
+**Why.** `nomic-embed-text` is trained with task prefixes: documents are embedded as
+`search_document: ...` and queries as `search_query: ...`. Applying a different
+prefix, or none, produces different vectors for the same text and quietly degrades
+every result. That is worse than an error, because nothing fails. The model name
+alone would not have caught it.
+
+---
+
+### D-035: Search results below a distance threshold are discarded
+
+**Date:** 2026-09-14
+
+**Decision.** `search_policy` returns only passages within
+`DESKPILOT_POLICY_SEARCH__MAX_DISTANCE`, and otherwise tells the model the policy
+does not cover the question.
+
+**Why.** A vector search always returns its k nearest neighbours, whether or not
+anything is relevant. Handing the model the closest passage to "what is the atomic
+mass of tungsten?" invites it to answer from a refund policy. Saying "not covered"
+is a better answer than a confident wrong one, and it is the behaviour the eval
+suite will measure.
+
+---
+
+### D-036: A document is current only when all of its passages agree
+
+**Date:** 2026-09-14
+
+**Decision.** `index_status` treats a document as current only if every one of its
+passages carries the same digest and fingerprint.
+
+**Why.** Found by a failing test. The first version recorded one digest per document
+and let the last row win, so a document whose passages disagreed — a half-finished
+rebuild — reported itself as current. Comparing the whole set makes a partial state
+visible instead of hiding it.

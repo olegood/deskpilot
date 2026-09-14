@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 
 import typer
+from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -21,13 +22,18 @@ from deskpilot.db.seed import SeedError, seed
 from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.runner import AgentRun, run_agent
+from deskpilot.knowledge.index import DocumentState, PolicyIndexError, build_index, index_status
+from deskpilot.knowledge.search import PolicyPassage, search_policy_index
+from deskpilot.llm import build_embeddings
 from deskpilot.tickets import TicketError, create_ticket, get_ticket, list_tickets, set_status
 
 app = typer.Typer(no_args_is_help=True, help="Deskpilot: AI support agent for Acme Gear.")
 db_app = typer.Typer(no_args_is_help=True, help="Database commands.")
 ticket_app = typer.Typer(no_args_is_help=True, help="Support ticket commands.")
+policy_app = typer.Typer(no_args_is_help=True, help="Policy knowledge base commands.")
 app.add_typer(db_app, name="db")
 app.add_typer(ticket_app, name="ticket")
+app.add_typer(policy_app, name="policy")
 
 # Options reused across commands.
 CustomerOption = Annotated[
@@ -46,6 +52,15 @@ class Runtime:
     settings: Settings
     sessions: async_sessionmaker[AsyncSession]
     checkpointer: BaseCheckpointSaver[Any]
+    embeddings: Embeddings
+
+    def context_for(self, customer_email: str) -> AgentContext:
+        return AgentContext(
+            customer_email=customer_email,
+            session_factory=self.sessions,
+            embeddings=self.embeddings,
+            policy_search=self.settings.policy_search,
+        )
 
 
 @asynccontextmanager
@@ -54,7 +69,12 @@ async def runtime() -> AsyncIterator[Runtime]:
     engine = create_engine(settings.database)
     try:
         async with open_checkpointer(settings.database) as checkpointer:
-            yield Runtime(settings, create_session_factory(engine), checkpointer)
+            yield Runtime(
+                settings=settings,
+                sessions=create_session_factory(engine),
+                checkpointer=checkpointer,
+                embeddings=build_embeddings(settings),
+            )
     finally:
         await engine.dispose()
 
@@ -63,7 +83,7 @@ def run[T](coroutine: Callable[[], Coroutine[Any, Any, T]]) -> T:
     """Run a command's async body, turning expected failures into clean exits."""
     try:
         return asyncio.run(coroutine())
-    except (TicketError, SeedError) as exc:
+    except (TicketError, SeedError, PolicyIndexError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
@@ -214,6 +234,82 @@ def ticket_show_command(
             typer.secho(f"  <- {first_line}", fg=typer.colors.BRIGHT_BLACK)
 
 
+# ── policy ──────────────────────────────────────────────────────────────────
+
+
+@policy_app.command("index")
+def policy_index_command(
+    force: Annotated[
+        bool, typer.Option("--force", help="Re-embed every document, even unchanged ones.")
+    ] = False,
+) -> None:
+    """Build the policy search index from the markdown in backend/policies."""
+
+    async def body() -> str:
+        async with runtime() as rt, rt.sessions() as session:
+            result = await build_index(session, rt.embeddings, rt.settings, force=force)
+            await session.commit()
+        return (
+            f"Indexed {result.documents_indexed} document(s) into {result.chunks_written} "
+            f"passage(s); skipped {result.documents_skipped} unchanged, "
+            f"removed {result.documents_removed} orphaned."
+        )
+
+    typer.secho(run(body), fg=typer.colors.GREEN)
+
+
+@policy_app.command("status")
+def policy_status_command() -> None:
+    """Show which policy documents are indexed and which need rebuilding."""
+
+    async def body() -> list[tuple[str, str, int]]:
+        async with runtime() as rt, rt.sessions() as session:
+            return [
+                (s.document, s.state.value, s.chunks)
+                for s in await index_status(session, rt.settings)
+            ]
+
+    statuses = run(body)
+    colours = {
+        DocumentState.CURRENT.value: typer.colors.GREEN,
+        DocumentState.MISSING.value: typer.colors.YELLOW,
+        DocumentState.STALE.value: typer.colors.YELLOW,
+        DocumentState.ORPHANED.value: typer.colors.RED,
+    }
+    for document, state, chunks in statuses:
+        typer.secho(f"{document:<32} {state:<10} {chunks} passage(s)", fg=colours[state])
+    if any(state != DocumentState.CURRENT.value for _, state, _ in statuses):
+        typer.secho("\nRun `deskpilot policy index` to bring the index up to date.", bold=True)
+
+
+@policy_app.command("search")
+def policy_search_command(
+    question: Annotated[str, typer.Argument(help="What to look up in the policies.")],
+) -> None:
+    """Search the policy index directly, showing distances.
+
+    The same search the agent's tool runs, without the model in the way. Use it to
+    sanity-check retrieval and to choose DESKPILOT_POLICY_SEARCH__MAX_DISTANCE.
+    """
+
+    async def body() -> list[PolicyPassage]:
+        async with runtime() as rt, rt.sessions() as session:
+            return await search_policy_index(
+                session, rt.embeddings, question, rt.settings.policy_search
+            )
+
+    passages = run(body)
+    if not passages:
+        typer.secho("Nothing matched closely enough.", fg=typer.colors.YELLOW)
+        return
+    for passage in passages:
+        typer.secho(
+            f"{passage.distance:.3f}  {passage.document} - {passage.heading}",
+            fg=typer.colors.GREEN,
+        )
+        typer.secho(f"        {passage.content.splitlines()[-1][:100]}", dim=True)
+
+
 # ── ask (one-shot, no ticket) ───────────────────────────────────────────────
 
 
@@ -227,7 +323,7 @@ def ask_command(
 
     async def body() -> AgentRun:
         async with runtime() as rt:
-            context = AgentContext(customer_email=customer, session_factory=rt.sessions)
+            context = rt.context_for(customer)
             # No checkpointer, and a throwaway thread id: this run leaves no trace.
             return await run_agent(question, context, str(uuid.uuid4()), settings=rt.settings)
 
@@ -242,7 +338,7 @@ def status_after(result: AgentRun) -> TicketStatus:
 
 
 async def respond(rt: Runtime, ticket: Ticket, customer_email: str, message: str) -> AgentRun:
-    context = AgentContext(customer_email=customer_email, session_factory=rt.sessions)
+    context = rt.context_for(customer_email)
     return await run_agent(message, context, ticket.thread_id, rt.checkpointer, rt.settings)
 
 

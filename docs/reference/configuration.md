@@ -2,7 +2,7 @@
 
 All Deskpilot backend settings, defined in `backend/src/deskpilot/config.py`.
 
-> Last verified against: milestone 1 (complete).
+> Last verified against: milestone 2, step 2.2.
 
 ## How settings are loaded
 
@@ -68,6 +68,24 @@ Three roles are configured independently: `AGENT`, `GUARD`, and `JUDGE`. Each su
 | Variable | Default | Description |
 |---|---|---|
 | `DESKPILOT_EMBEDDINGS__MODEL` | `nomic-embed-text` | Embedding model. Always served by Ollama, since Anthropic has no embeddings API. |
+| `DESKPILOT_EMBEDDINGS__DIMENSIONS` | `768` | Vector width. Must match both the model's output and the database column; changing it needs a migration. |
+| `DESKPILOT_EMBEDDINGS__DOCUMENT_PREFIX` | `search_document: ` | Task prefix for indexed passages. Required by `nomic-embed-text`; omitting it silently worsens retrieval. |
+| `DESKPILOT_EMBEDDINGS__QUERY_PREFIX` | `search_query: ` | Task prefix for questions. |
+| `DESKPILOT_EMBEDDINGS__NUM_CTX` | `8192` | Context window. Ollama's card says 2048, but the model handles 8192; longer passages are otherwise truncated silently. |
+| `DESKPILOT_EMBEDDINGS__TIMEOUT_S` | `60` | HTTP timeout for one embedding call. |
+
+Model, document prefix, and dimensions together form the embedding fingerprint
+stored with each passage. Changing any of them marks the policy index stale. See the
+[policy knowledge base guide](../guides/policy-search.md).
+
+## Policy search
+
+| Variable | Default | Description |
+|---|---|---|
+| `DESKPILOT_POLICY_SEARCH__DIRECTORY` | `policies` | Where the markdown source documents live, relative to `backend/`. |
+| `DESKPILOT_POLICY_SEARCH__TOP_K` | `4` | Passages returned per search. |
+| `DESKPILOT_POLICY_SEARCH__MAX_DISTANCE` | `0.6` | Cosine distance above which a passage is treated as irrelevant. 0 is identical, 2 is opposite. |
+| `DESKPILOT_POLICY_SEARCH__MAX_CHUNK_CHARS` | `1200` | Sections longer than this are split further, at paragraph boundaries. |
 
 ## Database
 

@@ -33,7 +33,7 @@ Each milestone ends with something runnable, tested, and documented.
 ## Milestone 2: tools and state
 
 - [x] **2.1 Tickets and checkpointing.** A `tickets` table, `AsyncPostgresSaver`, one LangGraph thread per ticket, multi-turn conversations that survive a restart, and `deskpilot ticket new / reply / list / show`.
-- [ ] **2.2 Policy knowledge base.** pgvector, embeddings, and a `search_policy` tool.
+- [x] **2.2 Policy knowledge base.** pgvector, markdown policy documents chunked at headings, embeddings with task prefixes, a `search_policy` tool, and `deskpilot policy index / status / search`.
 - [ ] **2.3 The rest of the read-only tools.** `get_customer` and `list_orders`.
 - [ ] **2.4 Classification.** A node ahead of the loop that tags each ticket and shapes which tools the agent gets.
 - [ ] **2.5 Tool-selection evals.** A small scripted dataset with expected tool calls, as a dry run for milestone 12.

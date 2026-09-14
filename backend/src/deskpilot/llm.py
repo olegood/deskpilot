@@ -7,11 +7,21 @@ Ollama to Anthropic is purely a configuration change.
 
 from __future__ import annotations
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.language_models import BaseChatModel
-from langchain_ollama import ChatOllama
+from dataclasses import dataclass
 
-from deskpilot.config import ModelRole, ModelSettings, Provider, Settings, get_settings
+from langchain_anthropic import ChatAnthropic
+from langchain_core.embeddings import Embeddings
+from langchain_core.language_models import BaseChatModel
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+
+from deskpilot.config import (
+    EmbeddingSettings,
+    ModelRole,
+    ModelSettings,
+    Provider,
+    Settings,
+    get_settings,
+)
 
 
 def build_chat_model(role: ModelRole, settings: Settings | None = None) -> BaseChatModel:
@@ -48,3 +58,52 @@ def _build_anthropic(model: ModelSettings, settings: Settings) -> ChatAnthropic:
         max_tokens=model.max_output_tokens,
         timeout=model.timeout_s,
     )
+
+
+@dataclass
+class PrefixedEmbeddings(Embeddings):
+    """Applies a model's task prefixes to text before embedding it.
+
+    Retrieval models are often trained to be told what a piece of text is for, and
+    nomic-embed-text is one of them: documents get "search_document: " and questions
+    get "search_query: ". Skipping this is not an error, it just makes every result
+    slightly worse, which is exactly the kind of bug that never gets noticed.
+    """
+
+    inner: Embeddings
+    document_prefix: str
+    query_prefix: str
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self.inner.embed_documents([self.document_prefix + text for text in texts])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.inner.embed_query(self.query_prefix + text)
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        return await self.inner.aembed_documents([self.document_prefix + text for text in texts])
+
+    async def aembed_query(self, text: str) -> list[float]:
+        return await self.inner.aembed_query(self.query_prefix + text)
+
+
+def build_embeddings(settings: Settings | None = None) -> Embeddings:
+    """Build the embedding model.
+
+    Always Ollama: Anthropic has no embeddings API, so this does not follow the
+    per-role provider switch.
+    """
+    settings = settings or get_settings()
+    return _with_prefixes(settings.embeddings, str(settings.ollama_base_url).rstrip("/"))
+
+
+def _with_prefixes(embeddings: EmbeddingSettings, base_url: str) -> Embeddings:
+    inner = OllamaEmbeddings(
+        model=embeddings.model,
+        base_url=base_url,
+        num_ctx=embeddings.num_ctx,
+        client_kwargs={"timeout": embeddings.timeout_s},
+    )
+    if not embeddings.document_prefix and not embeddings.query_prefix:
+        return inner
+    return PrefixedEmbeddings(inner, embeddings.document_prefix, embeddings.query_prefix)

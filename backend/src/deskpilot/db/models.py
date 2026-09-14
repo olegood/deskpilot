@@ -14,8 +14,23 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, MetaData, String, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    MetaData,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+# Output size of the embedding model. Must match DESKPILOT_EMBEDDINGS__DIMENSIONS;
+# a vector column's width is fixed in the schema, so changing model needs a migration.
+EMBEDDING_DIMENSIONS = 768
 
 # Deterministic constraint names, so Alembic migrations can refer to them reliably.
 NAMING_CONVENTION = {
@@ -172,3 +187,43 @@ class OrderItem(Base):
     @property
     def line_total_cents(self) -> int:
         return self.quantity * self.unit_price_cents
+
+
+class PolicyChunk(Base):
+    """One searchable passage of the Acme Gear policy documents.
+
+    The markdown files under backend/policies are the source of truth. This table is
+    a derived index that `deskpilot policy index` rebuilds, so it is safe to delete
+    and regenerate at any time.
+    """
+
+    __tablename__ = "policy_chunks"
+    __table_args__ = (
+        # Cosine distance, matching the <=> operator the search query uses. Without a
+        # matching operator class the index is silently ignored.
+        Index(
+            "ix_policy_chunks_embedding",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Source file name, e.g. returns-and-refunds.md.
+    document: Mapped[str] = mapped_column(String(200), index=True)
+    # Heading path within the document, e.g. "Returns and refunds > Return window".
+    heading: Mapped[str] = mapped_column(String(400))
+    # Position within the document, so passages can be shown in reading order.
+    ordinal: Mapped[int]
+    content: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    # Digest of the whole source file, so a changed file is detected without
+    # re-embedding anything to find out.
+    source_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    # Identifies the model, prefix, and dimensions that produced this vector.
+    # Vectors with different fingerprints are not comparable, so a change here
+    # marks the document stale rather than corrupting search results quietly.
+    embedding_fingerprint: Mapped[str] = mapped_column(String(200))
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

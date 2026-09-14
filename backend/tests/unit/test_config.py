@@ -130,3 +130,18 @@ def test_rejects_invalid_ollama_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DESKPILOT_OLLAMA_BASE_URL", "not a url")
     with pytest.raises(ValidationError):
         load()
+
+
+def test_embedding_fingerprint_covers_model_prefix_and_dimensions() -> None:
+    embeddings = load().embeddings
+
+    assert embeddings.model in embeddings.fingerprint
+    assert embeddings.document_prefix in embeddings.fingerprint
+    assert str(embeddings.dimensions) in embeddings.fingerprint
+
+
+def test_embedding_fingerprint_changes_with_the_prefix() -> None:
+    embeddings = load().embeddings
+    other = embeddings.model_copy(update={"document_prefix": "passage: "})
+
+    assert embeddings.fingerprint != other.fingerprint
