@@ -1,7 +1,7 @@
 # Architecture overview
 
 > Describes the target design. Parts not built yet are listed in the [roadmap](../roadmap.md).
-> Last updated: milestone 1 (complete).
+> Last updated: milestone 2 (complete).
 
 ## What Deskpilot does
 
@@ -19,7 +19,7 @@ flowchart LR
     end
 
     subgraph Compose["Docker Compose"]
-        PG[("PostgreSQL")]
+        PG[("PostgreSQL<br/>+ pgvector")]
         ST["ShipTrack<br/>REST API"]
         PWA["Paywisp<br/>auth server"]
         PWM["Paywisp<br/>MCP server"]
@@ -121,7 +121,7 @@ See [the Ollama guide](../guides/ollama.md) for memory planning and the [configu
 
 ## Repository layout
 
-Target layout. So far `backend/` has config, the model factory, the database layer, the agent graph with its first tool, and the CLI; `infra/`, `scripts/`, and `docs/` exist too.
+Target layout. So far `backend/` has config, the model factory, the database layer with checkpointing, the agent graph with four read-only tools and a classifier, the policy knowledge base, the eval suite, and the CLI; `infra/`, `scripts/`, and `docs/` exist too.
 
 ```
 deskpilot/
@@ -130,6 +130,7 @@ deskpilot/
 │   ├── migrations/     # Alembic
 │   └── src/deskpilot/
 │       ├── api/  auth/  authz/  db/  graph/  tools/  guards/
+│       ├── knowledge/  evals/  tickets.py
 │       ├── integrations/   # ShipTrack client, MCP client, token vault
 │       ├── tracing/  llm.py  config.py  cli.py
 ├── frontend/           # React + TypeScript (pnpm)

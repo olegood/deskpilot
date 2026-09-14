@@ -2,7 +2,7 @@
 
 How Acme Gear's published policies reach the agent.
 
-> Last verified against: milestone 2, step 2.2.
+> Last verified against: milestone 2 (complete).
 
 ## How it fits together
 

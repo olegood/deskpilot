@@ -7,8 +7,8 @@ Each milestone ends with something runnable, tested, and documented.
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Foundation: uv, config, model factory, Postgres, seeded shop, minimal ReAct graph | **Done** |
-| 2 | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | In progress |
-| 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | Planned |
+| 2 | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | **Done** |
+| 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | Next |
 | 4 | ABAC: policy engine, audit log, principal injection into tools | Planned |
 | 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | Planned |
 | 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Planned |
@@ -37,7 +37,7 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **2.3 The rest of the read-only tools.** `get_customer`, which takes no arguments at all, and `list_orders` with a typed status filter and honest truncation.
 - [x] **2.4 Classification.** A structured-output node ahead of the loop that labels each ticket once, feeds the label to the agent as a hint, and records it on the ticket row.
 - [x] **2.5 Tool-selection evals.** A 16-case dataset with expected categories, required and forbidden tools, and answer checks; a concurrent runner that saves transcripts; `deskpilot eval list / run`.
-- [ ] **2.6 Wrap-up.** Docs pass and a demo.
+- [x] **2.6 Wrap-up.** README refreshed, docs pass with every cross-link verified.
 
 ## Post-production backlog
 
