@@ -97,6 +97,13 @@ The database URL is never stored in `alembic.ini`. `migrations/env.py` reads it 
 
 See [D-017](../decisions.md#d-017-schema-conventions) for the reasons.
 
+## Users
+
+`users` is separate from `customers`: one is people who log in, the other is people
+who bought something ([D-053](../decisions.md#d-053-users-are-a-separate-table-from-customers)).
+`password_hash` is bcrypt output and is never logged; `User.__repr__` is overridden
+so a stray traceback cannot carry it. See the [authentication guide](auth.md).
+
 ## Tickets
 
 A ticket row is deliberately thin, because the conversation itself lives in the

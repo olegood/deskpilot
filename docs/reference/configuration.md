@@ -66,6 +66,12 @@ JSON object, and a longer answer means it ignored the schema.
 | `NUM_CTX` | `num_ctx` | ignored |
 | `REASONING` | `reasoning` (sent as `think`) | rejected when `true` |
 
+## Authentication
+
+| Variable | Default | Description |
+|---|---|---|
+| `DESKPILOT_AUTH__BCRYPT_ROUNDS` | `12` | bcrypt work factor. Each increment doubles the cost of hashing and of verifying. Tests lower it; production should only ever raise it. |
+
 ## Tools
 
 | Variable | Default | Description |

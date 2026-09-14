@@ -69,6 +69,19 @@ class CustomerTier(StrEnum):
     GOLD = "gold"
 
 
+class UserRole(StrEnum):
+    """What kind of person this account belongs to.
+
+    A role is not a permission. It is one attribute among several that the ABAC
+    milestone will weigh up; nothing branches on it directly.
+    """
+
+    CUSTOMER = "customer"
+    REVIEWER = "reviewer"
+    SUPERVISOR = "supervisor"
+    ADMIN = "admin"
+
+
 class TicketCategory(StrEnum):
     """What a ticket is about. Decided by the classifier, and only ever advisory."""
 
@@ -110,6 +123,7 @@ class Customer(Base):
 
     orders: Mapped[list[Order]] = relationship(back_populates="customer", lazy="raise")
     tickets: Mapped[list[Ticket]] = relationship(back_populates="customer", lazy="raise")
+    user: Mapped[User | None] = relationship(back_populates="customer", lazy="raise")
 
 
 class Ticket(Base):
@@ -145,6 +159,41 @@ class Ticket(Base):
     )
 
     customer: Mapped[Customer] = relationship(back_populates="tickets", lazy="raise")
+
+
+class User(Base):
+    """Somebody who can log in.
+
+    Deliberately separate from Customer. A customer is somebody who bought
+    something and may never register; a reviewer logs in and has never bought
+    anything. Merging the two would mean either orders hanging off accounts that
+    do not exist, or staff rows in the customer table.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+    # bcrypt output, always 60 ASCII characters. Never logged, never returned.
+    password_hash: Mapped[str] = mapped_column(String(100))
+    full_name: Mapped[str] = mapped_column(String(200))
+    role: Mapped[UserRole] = mapped_column(str_enum(UserRole, "user_role"), index=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    # Bumped to invalidate every token this user holds, without storing a list of
+    # them. A token whose version does not match the row is refused.
+    token_version: Mapped[int] = mapped_column(default=1)
+    # Set for customer accounts, so a login can be tied to the orders it may see.
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    customer: Mapped[Customer | None] = relationship(back_populates="user", lazy="raise")
+
+    def __repr__(self) -> str:
+        # Spelled out so a stray repr in a log or a traceback can never carry the hash.
+        return f"User(id={self.id!r}, email={self.email!r}, role={self.role.value!r})"
 
 
 class Product(Base):

@@ -581,3 +581,81 @@ visible instead of hiding it.
 **Decision.** Fast unit tests check that every case names a real customer and real tools, that ids are unique, that no case both requires and forbids the same tool, and that every tool is exercised somewhere.
 
 **Why.** A rotten dataset is worse than no dataset. A case naming a renamed tool fails for ever and gets written off as a model problem. Catching it in the normal test run means a tool rename breaks the build immediately, rather than quietly degrading the suite.
+
+---
+
+### D-053: Users are a separate table from customers
+
+**Date:** 2026-09-14
+
+**Decision.** `users` holds people who can log in. `customers` holds people who bought something. A customer account carries a nullable `customer_id` linking the two.
+
+**Why.** They are genuinely different populations that mostly overlap. A reviewer logs in and has never bought anything; a customer who never registered still has orders and tickets. Merging them would mean either staff rows sitting in the customer table or orders hanging off accounts that do not exist.
+
+**Consequences.** Registration links by email when a matching customer exists. From the ABAC milestone the principal comes from the user, and `customer_id` is what lets a login see that person's orders.
+
+---
+
+### D-054: A password longer than 72 bytes is rejected, not truncated
+
+**Date:** 2026-09-14
+
+**Decision.** The policy rejects any password whose UTF-8 encoding exceeds 72 bytes, with a message saying so.
+
+**Why.** bcrypt hashes at most 72 bytes and silently ignores the rest, so two different long passwords can produce the same hash. Truncating quietly weakens a password the user believed was strong. Pre-hashing with SHA-256 first is the other common fix and does work, but it adds a scheme to get wrong for a case almost nobody hits.
+
+**Consequences.** The limit is counted in bytes, not characters, which surprises people: forty accented characters are eighty bytes. A test pins that specifically.
+
+---
+
+### D-055: Every login failure looks and costs the same
+
+**Date:** 2026-09-14
+
+**Decision.** An unknown address, a wrong password, and a disabled account all raise the same message. The unknown-address path verifies against a throwaway hash so it takes comparable time.
+
+**Why.** Either channel enumerates accounts. A distinct "no such account" message does it in one request; a faster response for unknown addresses does it just as well without a message, because bcrypt at cost 12 takes long enough to measure over a network.
+
+**Consequences.** Support gets a vaguer error to debug. The logs carry the real reason, which is where it belongs.
+
+---
+
+### D-056: The bcrypt cost is configurable, and tests lower it
+
+**Date:** 2026-09-14
+
+**Decision.** `DESKPILOT_AUTH__BCRYPT_ROUNDS` defaults to 12, and tests pass 4 explicitly.
+
+**Why.** Twelve rounds is roughly a quarter of a second per hash by design. A test suite that registers and authenticates dozens of accounts would spend most of its time proving that bcrypt is slow, which it is, on purpose. The property being tested is the algorithm and the flow, not the cost.
+
+**Consequences.** The cost is recorded inside every hash, so raising the default later does not invalidate existing passwords; they are rehashed on next login when that is added.
+
+---
+
+### D-057: A password change revokes every session
+
+**Date:** 2026-09-14
+
+**Decision.** `set_password` bumps `token_version`, which invalidates every token the user holds.
+
+**Why.** Changing a password is usually a response to it being compromised. Leaving existing sessions working means the person who took it keeps their access, which makes the change theatre.
+
+---
+
+### D-058: The CLI never takes a password as an argument
+
+**Date:** 2026-09-14
+
+**Decision.** `auth register`, `auth check`, and `auth passwd` prompt with echo off. There is no `--password` flag.
+
+**Why.** An argument lands in shell history and is visible in the process list to every other user on the machine for as long as the command runs.
+
+---
+
+### D-059: Expected failures are one list, shared by both CLI runners
+
+**Date:** 2026-09-14
+
+**Decision.** `EXPECTED_ERRORS` names every exception a command can raise in normal use, and both `run` and `run_sync` catch that tuple.
+
+**Why.** Found by a bug: adding `AuthError` to what looked like the right handler missed both, because the two `except` clauses had quietly diverged and neither matched the text being edited. A wrong password then printed a traceback instead of one red line. One list cannot drift from itself.

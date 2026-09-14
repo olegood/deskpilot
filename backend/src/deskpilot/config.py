@@ -100,6 +100,18 @@ class EmbeddingSettings(BaseModel):
         return f"{self.model}|{self.document_prefix}|{self.dimensions}"
 
 
+class AuthSettings(BaseModel):
+    """How accounts and credentials are handled."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # bcrypt work factor. Every increment doubles the time to hash and to verify.
+    # 12 is the current sensible default; raise it as hardware gets faster. Tests
+    # override it downwards, because 12 rounds times a hundred logins is a slow
+    # test suite.
+    bcrypt_rounds: int = Field(default=12, ge=4, le=16)
+
+
 class ToolSettings(BaseModel):
     """Limits that protect the context window from a tool's own output.
 
@@ -196,6 +208,7 @@ class Settings(BaseSettings):
         timeout_s=300.0,
     )
     embeddings: EmbeddingSettings = EmbeddingSettings()
+    auth: AuthSettings = AuthSettings()
     tools: ToolSettings = ToolSettings()
     policy_search: PolicySearchSettings = PolicySearchSettings()
     database: DatabaseSettings = DatabaseSettings()

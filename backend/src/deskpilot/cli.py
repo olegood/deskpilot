@@ -16,9 +16,10 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deskpilot.auth.users import AuthError, authenticate, create_user, get_user, set_password
 from deskpilot.config import Settings, get_settings
 from deskpilot.db.checkpointer import open_checkpointer, setup_checkpointer
-from deskpilot.db.models import Ticket, TicketStatus
+from deskpilot.db.models import Ticket, TicketStatus, User, UserRole
 from deskpilot.db.seed import SeedError, seed
 from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.evals.dataset import DatasetError, load_cases
@@ -36,8 +37,10 @@ ticket_app = typer.Typer(no_args_is_help=True, help="Support ticket commands.")
 policy_app = typer.Typer(no_args_is_help=True, help="Policy knowledge base commands.")
 app.add_typer(db_app, name="db")
 eval_app = typer.Typer(no_args_is_help=True, help="Evaluate the agent against saved cases.")
+auth_app = typer.Typer(no_args_is_help=True, help="Accounts and credentials.")
 app.add_typer(ticket_app, name="ticket")
 app.add_typer(eval_app, name="eval")
+app.add_typer(auth_app, name="auth")
 app.add_typer(policy_app, name="policy")
 
 # Options reused across commands.
@@ -85,11 +88,17 @@ async def runtime() -> AsyncIterator[Runtime]:
         await engine.dispose()
 
 
+# Failures a command can hit in normal use: a bad password, a missing ticket, a
+# stale policy index. They are reported as one red line and a non-zero exit, not as
+# a traceback. One tuple, so the two runners cannot drift apart.
+EXPECTED_ERRORS = (AuthError, DatasetError, PolicyIndexError, SeedError, TicketError)
+
+
 def run_sync[T](call: Callable[[], T]) -> T:
     """Run a synchronous command body with the same error handling as run()."""
     try:
         return call()
-    except (TicketError, SeedError, DatasetError) as exc:
+    except EXPECTED_ERRORS as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
@@ -98,7 +107,7 @@ def run[T](coroutine: Callable[[], Coroutine[Any, Any, T]]) -> T:
     """Run a command's async body, turning expected failures into clean exits."""
     try:
         return asyncio.run(coroutine())
-    except (TicketError, SeedError, PolicyIndexError) as exc:
+    except EXPECTED_ERRORS as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
@@ -328,6 +337,75 @@ def policy_search_command(
             fg=typer.colors.GREEN,
         )
         typer.secho(f"        {passage.content.splitlines()[-1][:100]}", dim=True)
+
+
+# ── auth ────────────────────────────────────────────────────────────────────
+
+
+@auth_app.command("register")
+def auth_register_command(
+    email: Annotated[str, typer.Argument(help="Email address for the new account.")],
+    name: Annotated[str, typer.Option("--name", help="The person's full name.")],
+    role: Annotated[UserRole, typer.Option("--role", help="What kind of account.")] = (
+        UserRole.CUSTOMER
+    ),
+) -> None:
+    """Create an account. The password is asked for, never passed as an argument."""
+    # hide_input keeps it off the screen; prompting keeps it out of shell history
+    # and out of the process list, where an argument would be visible to anyone
+    # running ps.
+    password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+
+    async def body() -> User:
+        async with runtime() as rt, rt.sessions() as session:
+            user = await create_user(
+                session,
+                email,
+                password,
+                name,
+                role,
+                rounds=rt.settings.auth.bcrypt_rounds,
+            )
+            await session.commit()
+            return user
+
+    user = run(body)
+    linked = " (linked to an existing customer)" if user.customer_id else ""
+    typer.secho(f"Created {user.email} as {user.role.value}{linked}.", fg=typer.colors.GREEN)
+
+
+@auth_app.command("check")
+def auth_check_command(
+    email: Annotated[str, typer.Argument(help="Email address to check.")],
+) -> None:
+    """Verify a password without issuing anything. A smoke test for the hash path."""
+    password = typer.prompt("Password", hide_input=True)
+
+    async def body() -> User:
+        async with runtime() as rt, rt.sessions() as session:
+            return await authenticate(session, email, password)
+
+    user = run(body)
+    typer.secho(f"OK: {user.email} ({user.role.value})", fg=typer.colors.GREEN)
+
+
+@auth_app.command("passwd")
+def auth_passwd_command(
+    email: Annotated[str, typer.Argument(help="Whose password to change.")],
+) -> None:
+    """Change a password. Every existing session for that account stops working."""
+    password = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+
+    async def body() -> None:
+        async with runtime() as rt, rt.sessions() as session:
+            user = await get_user(session, email)
+            if user is None:
+                raise AuthError(f"no account for {email}")
+            await set_password(session, user, password, rounds=rt.settings.auth.bcrypt_rounds)
+            await session.commit()
+
+    run(body)
+    typer.secho("Password changed. Existing sessions have been revoked.", fg=typer.colors.GREEN)
 
 
 # ── eval ────────────────────────────────────────────────────────────────────

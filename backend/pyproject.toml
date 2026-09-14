@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
     "alembic>=1.20.0",
+    "bcrypt>=5.0.0",
     "httpx>=0.28.1",
     "langchain-anthropic>=1.7.2",
     "langchain-core>=1.6.3",
@@ -36,6 +37,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: needs real external services such as Ollama or Postgres",
+    "slow: takes seconds rather than milliseconds; deselect with -m 'not slow'",
 ]
 # Integration tests are skipped by default. Run them with: uv run pytest -m integration
 addopts = "-ra --strict-markers --import-mode=importlib -m 'not integration' -v"

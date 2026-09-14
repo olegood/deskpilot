@@ -8,7 +8,7 @@ Each milestone ends with something runnable, tested, and documented.
 |---|---|---|
 | 1 | Foundation: uv, config, model factory, Postgres, seeded shop, minimal ReAct graph | **Done** |
 | 2 | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | **Done** |
-| 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | Next |
+| 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | In progress |
 | 4 | ABAC: policy engine, audit log, principal injection into tools | Planned |
 | 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | Planned |
 | 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Planned |
@@ -38,6 +38,13 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **2.4 Classification.** A structured-output node ahead of the loop that labels each ticket once, feeds the label to the agent as a hint, and records it on the ticket row.
 - [x] **2.5 Tool-selection evals.** A 16-case dataset with expected categories, required and forbidden tools, and answer checks; a concurrent runner that saves transcripts; `deskpilot eval list / run`.
 - [x] **2.6 Wrap-up.** README refreshed, docs pass with every cross-link verified.
+
+## Milestone 3: authentication
+
+- [x] **3.1 Users and passwords.** A `users` table separate from customers, bcrypt hashing with the 72-byte limit enforced rather than hidden, a password policy, timing-equal login failures, and `deskpilot auth register / check / passwd`.
+- [ ] **3.2 Tokens.** Short-lived JWT access tokens and rotating refresh tokens with reuse detection.
+- [ ] **3.3 Sessions.** A saved session under `~/.deskpilot`, and `--as` behind a setting.
+- [ ] **3.4 Wrap-up.** Rate limiting, the attack suite, and a docs pass.
 
 ## Post-production backlog
 
