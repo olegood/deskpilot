@@ -659,3 +659,69 @@ visible instead of hiding it.
 **Decision.** `EXPECTED_ERRORS` names every exception a command can raise in normal use, and both `run` and `run_sync` catch that tuple.
 
 **Why.** Found by a bug: adding `AuthError` to what looked like the right handler missed both, because the two `except` clauses had quietly diverged and neither matched the text being edited. A wrong password then printed a traceback instead of one red line. One list cannot drift from itself.
+
+---
+
+### D-060: An access token carries identity and nothing else
+
+**Date:** 2026-09-14
+
+**Decision.** The claims are `sub`, `jti`, `ver`, `iat`, `exp`, `iss`, and `aud`. No role, no email, no approval limit.
+
+**Why.** A claim baked in at login is a snapshot of a permission that may since have been taken away. A reviewer whose approval limit was lowered would keep the old one until their token expired. Reading attributes from the database at the moment of the decision costs a query and removes a whole class of stale-permission bug. This is the concrete form of "the token proves who you are; it does not decide what you can do".
+
+---
+
+### D-061: The algorithm is pinned at decode, and issuer and audience are checked
+
+**Date:** 2026-09-14
+
+**Decision.** `jwt.decode` is given `algorithms=["HS256"]`, an expected issuer and audience, and a list of claims that must be present.
+
+**Why.** Trusting the token's own `alg` header is how `alg: none` gets accepted, and how an HMAC-signed token gets verified against a public key an attacker already has. Checking the audience stops a token minted for another service being replayed here — the same rule that will apply to the Paywisp integration, in the other direction. Requiring claims explicitly means a token missing `ver` is refused rather than defaulting to something.
+
+**Consequences.** Every one of these is a test: forged key, tampered payload, `alg: none`, wrong audience, wrong issuer, missing claim, and assorted rubbish.
+
+---
+
+### D-062: Refresh tokens are opaque and stored as SHA-256 digests
+
+**Date:** 2026-09-14
+
+**Decision.** A refresh token is 256 random bits. The database holds only its SHA-256 digest.
+
+**Why.** Opaque rather than a JWT, because a refresh token needs to be revocable individually, which means a database row either way — and if there is a row, there is no reason to sign anything. The digest means a database dump cannot be used to mint sessions. SHA-256 rather than bcrypt because the input is already random: there is no dictionary to run, no benefit to being slow, and this is on the lookup path for every refresh.
+
+---
+
+### D-063: Refresh tokens rotate, and reuse revokes the family
+
+**Date:** 2026-09-14
+
+**Decision.** Every refresh retires the old token and issues a new one in the same family. Presenting an already-retired token revokes every token in that family.
+
+**Why.** Rotation alone narrows the window a stolen token is useful for. Reuse detection closes it: once both the thief and the owner hold tokens from the same family, whichever refreshes second is caught. Which of the two is the thief is unknowable, so both lose the session and the owner logs in again — a minor annoyance that turns a silent compromise into a visible one.
+
+**Consequences.** Each login starts its own family, so signing out a laptop does not sign out a phone. The retire and the issue happen in one transaction, so two concurrent refreshes cannot both succeed.
+
+---
+
+### D-064: The database is consulted even after the signature verifies
+
+**Date:** 2026-09-14
+
+**Decision.** `authenticate_access_token` verifies the signature and then loads the user, checking `token_version` and `is_active`.
+
+**Why.** A signature proves the token is ours and unmodified. It cannot know that the account was disabled or signed out a minute ago. Without the lookup, "revoke all sessions" would mean "revoke all sessions within fifteen minutes", which is not what anybody means by it.
+
+**Consequences.** Every authenticated request costs one query. That is the price of instant revocation, and it is the right trade for a fifteen-minute token.
+
+---
+
+### D-065: Logout is silent about tokens it does not recognise
+
+**Date:** 2026-09-14
+
+**Decision.** `log_out` revokes the family when the token is known and does nothing otherwise, without reporting which happened.
+
+**Why.** A logout that says whether a token existed is an oracle for testing stolen tokens. There is also nothing useful a caller could do with the failure.

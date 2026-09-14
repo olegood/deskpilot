@@ -25,6 +25,12 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def embeddings(agent_settings: Settings) -> Embeddings:
+    """Function-scoped on purpose.
+
+    OllamaEmbeddings holds an httpx async client bound to the event loop it was
+    built on, and every test here gets a fresh loop. A session-scoped client is
+    reused across loops and fails once connections are actually pooled.
+    """
     return build_embeddings(agent_settings)
 
 

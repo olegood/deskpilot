@@ -71,6 +71,15 @@ JSON object, and a longer answer means it ignored the schema.
 | Variable | Default | Description |
 |---|---|---|
 | `DESKPILOT_AUTH__BCRYPT_ROUNDS` | `12` | bcrypt work factor. Each increment doubles the cost of hashing and of verifying. Tests lower it; production should only ever raise it. |
+| `DESKPILOT_AUTH__JWT_SECRET` | **required** | Signing key for access tokens. No default; startup fails without it. Never logged. Generate with `openssl rand -hex 32`. |
+| `DESKPILOT_AUTH__JWT_ALGORITHM` | `HS256` | The only accepted algorithm. Pinned when decoding, so a token's own header cannot choose. |
+| `DESKPILOT_AUTH__JWT_ISSUER` | `deskpilot` | `iss` claim, checked on decode. |
+| `DESKPILOT_AUTH__JWT_AUDIENCE` | `deskpilot-api` | `aud` claim, checked on decode, so a token minted for another service cannot be replayed here. |
+| `DESKPILOT_AUTH__ACCESS_TOKEN_MINUTES` | `15` | Access token lifetime. Short, because an individual access token cannot be revoked before it expires. |
+| `DESKPILOT_AUTH__REFRESH_TOKEN_DAYS` | `14` | Refresh token lifetime. Long only because it rotates on every use and reuse is detected. |
+
+Changing `JWT_SECRET` invalidates every access token immediately. Refresh tokens
+survive, because they are database rows rather than signed claims.
 
 ## Tools
 

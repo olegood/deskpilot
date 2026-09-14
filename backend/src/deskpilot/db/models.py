@@ -196,6 +196,40 @@ class User(Base):
         return f"User(id={self.id!r}, email={self.email!r}, role={self.role.value!r})"
 
 
+class RefreshToken(Base):
+    """One issued refresh token.
+
+    The token itself is never stored, only a SHA-256 digest of it. Refresh tokens
+    are long random strings rather than chosen secrets, so there is nothing to
+    brute-force and no need for a slow hash; the digest exists so a database dump
+    cannot be used to mint sessions.
+
+    Tokens issued from one login share a `family_id`. Rotation retires the old token
+    and issues a new one in the same family, so presenting a retired token means a
+    copy is circulating and the whole family is revoked.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # Hex SHA-256 of the token. Unique, so the same token cannot be recorded twice.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # Every token descended from one login shares this.
+    family_id: Mapped[str] = mapped_column(String(64), index=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Set when the token was exchanged. A second exchange is a reuse.
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the token was invalidated, by logout or by reuse detection.
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship(lazy="raise")
+
+    def __repr__(self) -> str:
+        return f"RefreshToken(id={self.id!r}, user_id={self.user_id!r}, family={self.family_id!r})"
+
+
 class Product(Base):
     __tablename__ = "products"
     __table_args__ = (CheckConstraint("price_cents >= 0", name="price_not_negative"),)

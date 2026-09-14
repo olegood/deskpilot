@@ -111,6 +111,24 @@ class AuthSettings(BaseModel):
     # test suite.
     bcrypt_rounds: int = Field(default=12, ge=4, le=16)
 
+    # Signing key for access tokens. No default: a shared default secret in a public
+    # repository is a way to hand out valid tokens. Settings refuses to load without
+    # it, the same as the database password.
+    jwt_secret: SecretStr | None = None
+    # Pinned, and pinned again when decoding. Accepting whatever the token's own
+    # header claims is how "alg: none" and algorithm-confusion attacks work.
+    jwt_algorithm: Literal["HS256"] = "HS256"
+    # Who issued the token and who it is for. Checked on decode, so a token minted
+    # for another service cannot be replayed here.
+    jwt_issuer: str = "deskpilot"
+    jwt_audience: str = "deskpilot-api"
+    # Short, because an access token cannot be revoked individually before it
+    # expires. Revocation works by token_version, checked when the token is used.
+    access_token_minutes: int = Field(default=15, gt=0)
+    # Long, because this is what saves the user from logging in every quarter hour.
+    # Safe to be long only because it rotates on every use and reuse is detected.
+    refresh_token_days: int = Field(default=14, gt=0)
+
 
 class ToolSettings(BaseModel):
     """Limits that protect the context window from a tool's own output.
@@ -236,6 +254,12 @@ class Settings(BaseSettings):
                 "DESKPILOT_ANTHROPIC_API_KEY is required because these roles use "
                 f"anthropic: {', '.join(roles)}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _auth_needs_a_signing_key(self) -> Self:
+        if self.auth.jwt_secret is None:
+            raise ValueError("DESKPILOT_AUTH__JWT_SECRET is required")
         return self
 
     @model_validator(mode="after")

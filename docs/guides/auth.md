@@ -2,7 +2,7 @@
 
 Accounts, passwords, and how a login is checked.
 
-> Last verified against: milestone 3, step 3.1.
+> Last verified against: milestone 3, step 3.2.
 
 This covers **who somebody is**. What they are allowed to do is a separate
 question, answered by the ABAC milestone.
@@ -40,8 +40,14 @@ Passwords are always prompted for, never passed as arguments. An argument lands 
 shell history and is visible in the process list to anyone else on the machine
 ([D-058](../decisions.md#d-058-the-cli-never-takes-a-password-as-an-argument)).
 
-`auth check` verifies a password and issues nothing. It exists as a smoke test for
-the hashing path; real sessions arrive in step 3.3.
+```bash
+uv run deskpilot auth login noah.kim@example.com
+```
+
+`auth check` verifies a password and issues nothing. `auth login` issues a real
+session but does not yet save it, so it only reports what was minted — step 3.3 puts
+it on disk. The tokens themselves are never printed: a terminal scrollback is a poor
+place for a credential.
 
 ## Passwords
 
@@ -96,15 +102,78 @@ measure over a network.
 
 The logs record the real reason. The person typing at the form does not.
 
+## Tokens
+
+A login issues two things.
+
+| | Access token | Refresh token |
+|---|---|---|
+| Form | Signed JWT | 256 random bits, opaque |
+| Lifetime | 15 minutes | 14 days |
+| Stored | Nowhere | As a SHA-256 digest |
+| Proves | Who you are, right now | That you may have a new access token |
+
+### The access token carries identity and nothing else
+
+The claims are `sub`, `jti`, `ver`, `iat`, `exp`, `iss`, `aud`. No role, no email,
+no approval limit.
+
+A claim baked in at login is a snapshot of a permission that may since have been
+taken away: a reviewer whose limit was lowered would keep the old one until their
+token expired. Everything an authorization decision needs is read from the database
+at the moment of the decision
+([D-060](../decisions.md#d-060-an-access-token-carries-identity-and-nothing-else)).
+
+This is the concrete form of **the token proves who you are; it does not decide what
+you can do.**
+
+### Verifying is not just checking the signature
+
+`decode_access_token` pins the algorithm, checks the issuer and the audience, and
+requires every claim to be present. Trusting the token's own `alg` header is how
+`alg: none` gets accepted ([D-061](../decisions.md#d-061-the-algorithm-is-pinned-at-decode-and-issuer-and-audience-are-checked)).
+
+`authenticate_access_token` then loads the account and checks `token_version` and
+`is_active`. A signature proves the token is ours and unmodified; it cannot know the
+account was disabled a minute ago. Without that lookup, "revoke all sessions" would
+mean "revoke all sessions within fifteen minutes"
+([D-064](../decisions.md#d-064-the-database-is-consulted-even-after-the-signature-verifies)).
+
+### Refresh tokens rotate, and reuse is caught
+
+Every refresh retires the old token and issues a new one in the same **family**.
+Presenting an already-retired token means two copies are circulating, so every token
+in the family is revoked ([D-063](../decisions.md#d-063-refresh-tokens-rotate-and-reuse-revokes-the-family)).
+
+```
+login          -> token A                  family f1
+refresh(A)     -> token B, A retired       family f1
+refresh(A)     -> reuse. f1 revoked entirely; B is dead too.
+```
+
+Which of the two holders is the thief is unknowable, so both lose the session. That
+is a minor annoyance in exchange for turning a silent compromise into a visible one.
+
+Each login starts its own family, so signing out a laptop does not sign out a phone.
+
+Only the digest is stored, so a database dump cannot be used to mint sessions.
+SHA-256 rather than bcrypt: the input is already random, so there is no dictionary
+to run and no reason to be slow on a lookup path
+([D-062](../decisions.md#d-062-refresh-tokens-are-opaque-and-stored-as-sha-256-digests)).
+
 ## Revocation
 
-`users.token_version` is an integer bumped to invalidate every token an account
-holds, without storing a list of them. Step 3.2 checks it on every request.
+`users.token_version` invalidates every token an account holds without storing a
+list of them. An access token records the version it was issued under, and is
+refused when the two differ.
 
 It is bumped by `revoke_all_tokens`, and automatically by `set_password`. A password
 change that leaves old sessions working is theatre: changing a password is usually a
 response to it being compromised
 ([D-057](../decisions.md#d-057-a-password-change-revokes-every-session)).
+
+Changing `DESKPILOT_AUTH__JWT_SECRET` invalidates every access token at once.
+Refresh tokens survive, because they are rows rather than signed claims.
 
 ## Testing
 
@@ -112,6 +181,8 @@ response to it being compromised
 |---|---|
 | `tests/unit/test_passwords.py` | Hashing, verification, every policy rule, the dummy hash |
 | `tests/integration/test_users.py` | Registration, linking, normalisation, authentication, revocation |
+| `tests/unit/test_tokens.py` | Claims, and the attacks: forged key, tampered payload, `alg: none`, wrong audience, wrong issuer, missing claims |
+| `tests/integration/test_sessions.py` | Login, rotation, reuse detection, per-device families, logout, revocation |
 
 One test is marked `slow`: it compares how long an unknown-address login takes
 against a real one. Timing on a shared machine is noisy, so it only asserts the same

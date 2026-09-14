@@ -42,7 +42,7 @@ Each milestone ends with something runnable, tested, and documented.
 ## Milestone 3: authentication
 
 - [x] **3.1 Users and passwords.** A `users` table separate from customers, bcrypt hashing with the 72-byte limit enforced rather than hidden, a password policy, timing-equal login failures, and `deskpilot auth register / check / passwd`.
-- [ ] **3.2 Tokens.** Short-lived JWT access tokens and rotating refresh tokens with reuse detection.
+- [x] **3.2 Tokens.** Minimal-claim JWT access tokens with the algorithm pinned, opaque refresh tokens stored as digests, rotation on every use, family-wide revocation on reuse, and `deskpilot auth login`.
 - [ ] **3.3 Sessions.** A saved session under `~/.deskpilot`, and `--as` behind a setting.
 - [ ] **3.4 Wrap-up.** Rate limiting, the attack suite, and a docs pass.
 

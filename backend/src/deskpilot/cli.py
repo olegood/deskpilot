@@ -16,6 +16,8 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deskpilot.auth.sessions import IssuedSession, log_in
+from deskpilot.auth.tokens import TokenError
 from deskpilot.auth.users import AuthError, authenticate, create_user, get_user, set_password
 from deskpilot.config import Settings, get_settings
 from deskpilot.db.checkpointer import open_checkpointer, setup_checkpointer
@@ -91,7 +93,7 @@ async def runtime() -> AsyncIterator[Runtime]:
 # Failures a command can hit in normal use: a bad password, a missing ticket, a
 # stale policy index. They are reported as one red line and a non-zero exit, not as
 # a traceback. One tuple, so the two runners cannot drift apart.
-EXPECTED_ERRORS = (AuthError, DatasetError, PolicyIndexError, SeedError, TicketError)
+EXPECTED_ERRORS = (AuthError, DatasetError, PolicyIndexError, SeedError, TicketError, TokenError)
 
 
 def run_sync[T](call: Callable[[], T]) -> T:
@@ -372,6 +374,34 @@ def auth_register_command(
     user = run(body)
     linked = " (linked to an existing customer)" if user.customer_id else ""
     typer.secho(f"Created {user.email} as {user.role.value}{linked}.", fg=typer.colors.GREEN)
+
+
+@auth_app.command("login")
+def auth_login_command(
+    email: Annotated[str, typer.Argument(help="Email address to log in as.")],
+) -> None:
+    """Log in and issue a session.
+
+    Nothing is saved yet, so this only reports what was issued. Step 3.3 keeps the
+    session on disk and the other commands start using it.
+    """
+    password = typer.prompt("Password", hide_input=True)
+
+    async def body() -> IssuedSession:
+        async with runtime() as rt, rt.sessions() as session:
+            issued = await log_in(session, email, password, rt.settings.auth)
+            await session.commit()
+            return issued
+
+    issued = run(body)
+    typer.secho(f"Logged in as {issued.email}.", fg=typer.colors.GREEN)
+    # The tokens themselves are not printed: a terminal scrollback is a bad place
+    # for a credential, and nothing can be done with them until step 3.3 anyway.
+    typer.secho(
+        f"  access token expires  {issued.access_expires_at:%Y-%m-%d %H:%M} UTC\n"
+        f"  refresh token expires {issued.refresh_expires_at:%Y-%m-%d %H:%M} UTC",
+        dim=True,
+    )
 
 
 @auth_app.command("check")
