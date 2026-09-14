@@ -7,6 +7,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -20,6 +21,8 @@ from deskpilot.db.checkpointer import open_checkpointer, setup_checkpointer
 from deskpilot.db.models import Ticket, TicketStatus
 from deskpilot.db.seed import SeedError, seed
 from deskpilot.db.session import create_engine, create_session_factory
+from deskpilot.evals.dataset import DatasetError, load_cases
+from deskpilot.evals.runner import Report, run_suite, select, write_report
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.runner import AgentRun, run_agent
 from deskpilot.knowledge.index import DocumentState, PolicyIndexError, build_index, index_status
@@ -32,7 +35,9 @@ db_app = typer.Typer(no_args_is_help=True, help="Database commands.")
 ticket_app = typer.Typer(no_args_is_help=True, help="Support ticket commands.")
 policy_app = typer.Typer(no_args_is_help=True, help="Policy knowledge base commands.")
 app.add_typer(db_app, name="db")
+eval_app = typer.Typer(no_args_is_help=True, help="Evaluate the agent against saved cases.")
 app.add_typer(ticket_app, name="ticket")
+app.add_typer(eval_app, name="eval")
 app.add_typer(policy_app, name="policy")
 
 # Options reused across commands.
@@ -78,6 +83,15 @@ async def runtime() -> AsyncIterator[Runtime]:
             )
     finally:
         await engine.dispose()
+
+
+def run_sync[T](call: Callable[[], T]) -> T:
+    """Run a synchronous command body with the same error handling as run()."""
+    try:
+        return call()
+    except (TicketError, SeedError, DatasetError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
 
 
 def run[T](coroutine: Callable[[], Coroutine[Any, Any, T]]) -> T:
@@ -314,6 +328,78 @@ def policy_search_command(
             fg=typer.colors.GREEN,
         )
         typer.secho(f"        {passage.content.splitlines()[-1][:100]}", dim=True)
+
+
+# ── eval ────────────────────────────────────────────────────────────────────
+
+
+@eval_app.command("list")
+def eval_list_command() -> None:
+    """Show the cases in the suite."""
+    cases = run_sync(load_cases)
+    for case in cases:
+        tags = ",".join(case.tags) or "-"
+        category = case.category.value if case.category else "any"
+        typer.echo(f"{case.id:<26}  {category:<17}  {tags:<12}  {case.customer}")
+    typer.secho(f"\n{len(cases)} case(s)", dim=True)
+
+
+@eval_app.command("run")
+def eval_run_command(
+    only: Annotated[
+        list[str] | None, typer.Option("--only", help="Run just these case ids.")
+    ] = None,
+    tag: Annotated[
+        list[str] | None, typer.Option("--tag", help="Run only cases with these tags.")
+    ] = None,
+    concurrency: Annotated[int, typer.Option("--concurrency", help="Cases in flight at once.")] = 2,
+    save: Annotated[
+        bool, typer.Option("--save/--no-save", help="Write the run to evals/runs/.")
+    ] = True,
+) -> None:
+    """Run the eval suite against the configured models and print a report."""
+
+    async def body() -> tuple[Report, Path | None]:
+        cases = select(load_cases(), only or [], tag or [])
+        if not cases:
+            raise DatasetError("no cases matched that filter")
+        async with runtime() as rt:
+            report = await run_suite(cases, rt.sessions, rt.settings, concurrency)
+        return report, (write_report(report) if save else None)
+
+    report, path = run(body)
+    show_report(report, path)
+
+
+def show_report(report: Report, path: Path | None) -> None:
+    for result in report.results:
+        if result.passed:
+            typer.secho(f"pass  {result.case_id}", fg=typer.colors.GREEN)
+            continue
+        # Red for something the agent must never do, yellow for a weaker answer.
+        colour = typer.colors.RED if result.critical_failures else typer.colors.YELLOW
+        typer.secho(f"FAIL  {result.case_id}", fg=colour)
+        for failure in result.failures:
+            typer.secho(f"        {failure}", fg=colour)
+        typer.secho(f"        tools: {result.tools_called or 'none'}", dim=True)
+        typer.secho(f"        answer: {result.answer[:160]}", dim=True)
+
+    summary = report.summary
+    typer.echo()
+    typer.secho(
+        f"{summary.passed}/{summary.total} passed  |  "
+        f"{summary.critical} critical  |  "
+        f"category {summary.category_correct}/{summary.total}  |  "
+        f"{summary.total_tokens} tokens  |  {summary.seconds:.1f}s  |  "
+        f"agent {report.agent_model}",
+        bold=True,
+    )
+    if path is not None:
+        typer.secho(f"Saved to {path}", dim=True)
+    # A non-zero exit makes the suite scriptable without pretending it is a test
+    # suite: a model can fail a case today and pass it tomorrow.
+    if summary.passed < summary.total:
+        raise typer.Exit(code=1)
 
 
 # ── ask (one-shot, no ticket) ───────────────────────────────────────────────

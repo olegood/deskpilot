@@ -26,6 +26,9 @@ deskpilot/
 │   │   ├── cli.py             # `deskpilot` command-line interface
 │   │   ├── db/                # models, sessions, seed data, checkpointer
 │   │   ├── tickets.py         # ticket lifecycle
+│   │   └── evals/             # dataset, scoring, and the suite runner
+│   ├── policies/              # the published policy documents
+│   ├── evals/                 # eval cases (JSONL) and saved runs
 │   │   ├── knowledge/         # policy chunking, indexing, search
 │   │   ├── graph/             # state, context, prompts, the loop, the runner
 │   │   └── tools/             # what the agent can call
@@ -63,6 +66,7 @@ Run from `backend/`:
 | Ask the agent something | `uv run deskpilot ask "..." --as noah.kim@example.com -v` |
 | Start a saved conversation | `uv run deskpilot ticket new "..." --as ... --subject "..."` |
 | Run only the graph tests | `uv run pytest tests/graph` |
+| Run the eval suite | `uv run deskpilot eval run --tag security` |
 | Show all CLI commands | `uv run deskpilot --help` |
 
 Infrastructure commands run from the repo root: `docker compose up -d` to start, `docker compose ps` to check health. See the [database guide](database.md) for more.

@@ -509,3 +509,75 @@ visible instead of hiding it.
 **Decision.** A model error, a malformed answer, or an empty message all produce `OTHER`, logged at warning level. The run continues.
 
 **Why.** The category is a hint. Losing it costs a little answer quality; raising from the classify node would cost the customer their reply entirely. The failure is worth recording, not worth stopping for.
+
+---
+
+### D-046: Evals score behaviour, not prose
+
+**Date:** 2026-09-14
+
+**Decision.** A case states an expected category, tools that must be called, tools that must not be called, and substrings the answer must or must not contain. Nothing judges how well the answer is written.
+
+**Why.** These checks are deterministic, fast, and unarguable: either `search_policy` was called or it was not. Answer quality needs a second model and its own biases, and that belongs in the evals milestone. Starting with the mechanical half means the suite is trustworthy from the first run.
+
+---
+
+### D-047: Required tools are a floor; extra calls are reported, not failed
+
+**Date:** 2026-09-14
+
+**Decision.** `requires` lists tools that must be called. Anything else the agent called is reported as an extra, and does not fail the case. `forbids` is where hard expectations live.
+
+**Why.** There is usually more than one reasonable route to a correct answer: checking the customer's tier before quoting a return window is thorough, not wrong. Pinning the exact tool set would make the suite fail every time the agent got better. Where a call really is wrong, `forbids` says so explicitly.
+
+---
+
+### D-048: Some failures are critical, and the report says which
+
+**Date:** 2026-09-14
+
+**Decision.** Calling a forbidden tool or leaking a forbidden string is critical and printed in red. A wrong category or a missing phrase is an ordinary failure, printed in yellow. The summary counts both.
+
+**Why.** They are different kinds of problem. A mislabelled ticket is a quality regression to look at when convenient. Another customer's tracking number in an answer is a defect to stop for. A single pass rate hides that difference precisely when it matters most.
+
+---
+
+### D-049: A case that crashes is a failed case, not a stopped suite
+
+**Date:** 2026-09-14
+
+**Decision.** `run_case` catches every exception and records it as a failure with the exception text. The suite always finishes and always reports.
+
+**Why.** A suite that stops on the first timeout tells you almost nothing, and local models time out. Fifteen results and one crash is a useful report; one crash and no results is not.
+
+---
+
+### D-050: Every case runs in a fresh thread with no checkpointer
+
+**Date:** 2026-09-14
+
+**Decision.** Each case gets a unique thread id, the graph is built without a checkpointer, and cases run concurrently behind a semaphore.
+
+**Why.** Cases must not see each other's conversations, and re-running the suite must not need a reset. It also keeps the eval database clean: nothing is written, so the suite can run against a seeded database repeatedly.
+
+**Consequences.** Concurrency defaults to 2, matching `OLLAMA_NUM_PARALLEL`. Going wider does not make a local model faster; it makes every case wait longer.
+
+---
+
+### D-051: Runs are saved as JSONL so they can be re-scored
+
+**Date:** 2026-09-14
+
+**Decision.** Each run writes `evals/runs/<timestamp>.jsonl`: one header line with the models and summary, then one line per case including the full answer.
+
+**Why.** Scoring is cheap and running the agent is not. Saving the transcripts means the judge model in the evals milestone can score old runs without paying for them again, and two runs can be compared long after the fact. The header records which models produced the run, because a report without that is not comparable to anything.
+
+---
+
+### D-052: The dataset validates itself in the normal test suite
+
+**Date:** 2026-09-14
+
+**Decision.** Fast unit tests check that every case names a real customer and real tools, that ids are unique, that no case both requires and forbids the same tool, and that every tool is exercised somewhere.
+
+**Why.** A rotten dataset is worse than no dataset. A case naming a renamed tool fails for ever and gets written off as a model problem. Catching it in the normal test run means a tool rename breaks the build immediately, rather than quietly degrading the suite.

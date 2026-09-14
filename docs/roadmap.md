@@ -36,7 +36,7 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **2.2 Policy knowledge base.** pgvector, markdown policy documents chunked at headings, embeddings with task prefixes, a `search_policy` tool, and `deskpilot policy index / status / search`.
 - [x] **2.3 The rest of the read-only tools.** `get_customer`, which takes no arguments at all, and `list_orders` with a typed status filter and honest truncation.
 - [x] **2.4 Classification.** A structured-output node ahead of the loop that labels each ticket once, feeds the label to the agent as a hint, and records it on the ticket row.
-- [ ] **2.5 Tool-selection evals.** A small scripted dataset with expected tool calls, as a dry run for milestone 12.
+- [x] **2.5 Tool-selection evals.** A 16-case dataset with expected categories, required and forbidden tools, and answer checks; a concurrent runner that saves transcripts; `deskpilot eval list / run`.
 - [ ] **2.6 Wrap-up.** Docs pass and a demo.
 
 ## Post-production backlog

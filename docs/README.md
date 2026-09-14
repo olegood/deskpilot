@@ -13,6 +13,7 @@
 | [Database guide](guides/database.md) | PostgreSQL, migrations, schema conventions, seed data |
 | [Policy knowledge base](guides/policy-search.md) | The policy documents, chunking, embeddings, and search |
 | [Agent guide](guides/agent.md) | The graph, tools, where identity lives, and how to run the agent |
+| [Evals guide](guides/evals.md) | The dataset, how cases are scored, and how to run the suite |
 | [Configuration reference](reference/configuration.md) | Every setting and environment variable |
 
 ## Where to start
@@ -22,6 +23,7 @@
 - **Changing a setting:** see the [configuration reference](reference/configuration.md).
 - **Changing the database schema:** see the [database guide](guides/database.md#changing-the-schema).
 - **Adding a tool or changing the loop:** see the [agent guide](guides/agent.md).
+- **Measuring whether a change helped:** see the [evals guide](guides/evals.md).
 - **Wondering why something is built a certain way:** check the [decisions](decisions.md).
 
 ## Checks
