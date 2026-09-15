@@ -92,6 +92,17 @@ survive, because they are database rows rather than signed claims.
 |---|---|---|
 | `DESKPILOT_TOOLS__MAX_ORDERS_LISTED` | `10` | How many orders `list_orders` returns. A cap, not a tool argument, so the model cannot raise it. When it truncates, the tool says so. |
 
+## Account attributes
+
+Not environment variables: these live on the account and are set with
+`deskpilot auth grant`. They are listed here because they are the inputs a policy
+weighs.
+
+| Attribute | Default | Description |
+|---|---|---|
+| `regions` | empty | Regions a member of staff may act in. Empty for customers, who are scoped by ownership instead. |
+| `approval_limit_cents` | `0` | The most this person may approve alone. Zero for everyone who approves nothing. |
+
 ## Embeddings
 
 | Variable | Default | Description |

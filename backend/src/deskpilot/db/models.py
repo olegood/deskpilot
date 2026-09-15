@@ -27,6 +27,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # Output size of the embedding model. Must match DESKPILOT_EMBEDDINGS__DIMENSIONS;
@@ -183,6 +184,17 @@ class User(Base):
     # Bumped to invalidate every token this user holds, without storing a list of
     # them. A token whose version does not match the row is refused.
     token_version: Mapped[int] = mapped_column(default=1)
+    # ── ABAC attributes ─────────────────────────────────────────────────────
+    # Which regions this person may act in. Empty for customers, who are scoped by
+    # ownership instead. Stored as an array rather than a join table: it is a short
+    # list of labels read on every decision, never queried on its own.
+    regions: Mapped[list[str]] = mapped_column(
+        ARRAY(String(16)), default=list, server_default=text("'{}'")
+    )
+    # The most a reviewer may approve on their own, in cents. Zero for everyone who
+    # approves nothing, which is most accounts.
+    approval_limit_cents: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+
     # Consecutive failed logins. Reset by a success, and by a lockout expiring.
     # server_default as well as default: without it, adding this column to a table
     # that already has rows fails with a NOT NULL violation, and any insert that

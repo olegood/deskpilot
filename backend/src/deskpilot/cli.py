@@ -27,9 +27,14 @@ from deskpilot.auth.sessions import (
 )
 from deskpilot.auth.tokens import TokenError
 from deskpilot.auth.users import AuthError, authenticate, create_user, get_user, set_password
+from deskpilot.authz import resources
+from deskpilot.authz.actions import Action
+from deskpilot.authz.engine import Decision, decide
+from deskpilot.authz.principal import Principal
+from deskpilot.authz.resources import Resource
 from deskpilot.config import Settings, get_settings
 from deskpilot.db.checkpointer import open_checkpointer, setup_checkpointer
-from deskpilot.db.models import Ticket, TicketStatus, User, UserRole
+from deskpilot.db.models import Region, Ticket, TicketStatus, User, UserRole
 from deskpilot.db.seed import SeedError, seed
 from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.evals.dataset import DatasetError, load_cases
@@ -515,6 +520,103 @@ def auth_logout_command() -> None:
 
     run(body)
     typer.secho("Logged out.", fg=typer.colors.GREEN)
+
+
+@auth_app.command("grant")
+def auth_grant_command(
+    email: Annotated[str, typer.Argument(help="Which account to change.")],
+    region: Annotated[
+        list[Region] | None, typer.Option("--region", help="A region this person covers.")
+    ] = None,
+    limit: Annotated[
+        int | None,
+        typer.Option("--approval-limit", help="Most they may approve alone, in cents."),
+    ] = None,
+) -> None:
+    """Set the attributes a policy weighs: which regions, and how much.
+
+    Attributes, not permissions. Nothing here grants an action directly; the rules
+    in authz/policies.py decide what these values allow.
+    """
+
+    async def body() -> User:
+        async with runtime() as rt, rt.sessions() as session:
+            user = await get_user(session, email)
+            if user is None:
+                raise AuthError(f"no account for {email}")
+            if region is not None:
+                user.regions = [item.value for item in region]
+            if limit is not None:
+                user.approval_limit_cents = limit
+            await session.commit()
+            return user
+
+    user = run(body)
+    typer.secho(
+        f"{user.email}: regions {user.regions or '[]'}, approval limit {user.approval_limit_cents}",
+        fg=typer.colors.GREEN,
+    )
+
+
+@auth_app.command("can")
+def auth_can_command(
+    email: Annotated[str, typer.Argument(help="Whose permissions to test.")],
+    action: Annotated[Action, typer.Argument(help="The action to test.")],
+    region: Annotated[Region, typer.Option("--region", help="Region of the resource.")] = Region.EU,
+    owner: Annotated[
+        int | None, typer.Option("--owner", help="Customer id that owns the resource.")
+    ] = None,
+    amount: Annotated[
+        int, typer.Option("--amount", help="Amount in cents, for approval actions.")
+    ] = 0,
+) -> None:
+    """Ask the policy engine a question directly, and see which rule answered.
+
+    The fastest way to understand a refusal, and to check a rule change did what
+    was intended before wiring it into anything.
+    """
+
+    async def body() -> tuple[Principal, Decision]:
+        async with runtime() as rt, rt.sessions() as session:
+            user = await get_user(session, email)
+            if user is None:
+                raise AuthError(f"no account for {email}")
+            principal = Principal.from_user(user)
+            return principal, decide(principal, action, resource_for(action, region, owner, amount))
+
+    principal, outcome = run(body)
+    colour = typer.colors.GREEN if outcome.allowed else typer.colors.RED
+    typer.secho("allow" if outcome.allowed else "deny", fg=colour, bold=True)
+    typer.secho(
+        f"  rule:      {outcome.policy}\n"
+        f"  reason:    {outcome.reason}\n"
+        f"  principal: {principal.role.value}, regions "
+        f"{sorted(r.value for r in principal.regions) or '[]'}, "
+        f"limit {principal.approval_limit_cents}",
+        dim=True,
+    )
+
+
+def resource_for(action: Action, region: Region, owner: int | None, amount: int) -> Resource:
+    """Build a plausible resource for whichever action is being asked about."""
+    owner = owner if owner is not None else 0
+    match action:
+        case Action.POLICY_SEARCH:
+            return resources.PolicyDocuments()
+        case Action.ORDER_VIEW:
+            return resources.Order(owner_customer_id=owner, region=region)
+        case Action.CUSTOMER_VIEW:
+            return resources.CustomerProfile(customer_id=owner, region=region)
+        case Action.REFUND_APPROVE | Action.PROPOSAL_EDIT | Action.PROPOSAL_REJECT:
+            return resources.Proposal(
+                ticket_owner_customer_id=owner, region=region, amount_cents=amount
+            )
+        case Action.USER_MANAGE:
+            return resources.Account(user_id=owner)
+        case Action.TRACE_VIEW:
+            return resources.Trace(owner_customer_id=owner)
+        case _:
+            return resources.Ticket(owner_customer_id=owner, region=region)
 
 
 @auth_app.command("check")

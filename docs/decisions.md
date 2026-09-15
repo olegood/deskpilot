@@ -815,3 +815,75 @@ visible instead of hiding it.
 **Why.** Found by the migration failing: `column "failed_logins" of relation "users" contains null values`. Autogenerate writes `nullable=False` with no default, which cannot work on a table that already has rows. A `server_default` on the model makes autogenerate emit it, keeps `alembic check` quiet, and also covers any insert that bypasses the ORM.
 
 **Consequences.** It generalises. Any non-nullable column added to a table that already has data needs a server default, or a three-step migration: add nullable, backfill, then enforce.
+
+---
+
+### D-075: A policy is a pure function of principal, action, and resource
+
+**Date:** 2026-09-15
+
+**Decision.** Every rule takes a frozen `Principal`, an `Action`, and a frozen `Resource`, and returns allow, deny, or `None` meaning "not my business". No rule performs I/O, loads a row, or reads a setting.
+
+**Why.** It makes the policy enumerable. The whole rule set can be tested as a matrix — every action against every resource for every kind of actor — rather than through a handful of scenarios. A policy you cannot enumerate is a policy you are guessing about. It also means the caller decides what to load, so a rule can never be slow or fail.
+
+**Consequences.** The caller assembles the resource, which is a real cost: forgetting to put the region on a `Ticket` silently changes the answer. [D-008](#d-008-in-house-abac-engine) already chose an in-house engine; this is the shape of it.
+
+---
+
+### D-076: Deny by default, and the denial says the default was reached
+
+**Date:** 2026-09-15
+
+**Decision.** Rules are tried in order and the first to answer decides. When none answers, the request is denied with the reason "no rule allows this action on this resource", and the recorded rule is `default`.
+
+**Why.** An action nobody wrote a rule for is not an oversight to route around; it is an action that has not been thought about. Distinguishing "a rule denied this" from "nothing covered this" matters when reading an audit log, because the second is a gap in the policy rather than a user doing something wrong.
+
+---
+
+### D-077: Denials are ordered before allows, and separation of duties is a denial
+
+**Date:** 2026-09-15
+
+**Decision.** The rule order is: disabled accounts, separation of duties, ownership, then region and limit. Reading `policies.py` top to bottom is reading the policy.
+
+**Why.** First-match wins, so position is meaning. A rule that stops somebody approving a refund on their own ticket is worthless if a later rule can allow it because their limit is high enough and they cover the region. Putting it among the denials makes it unconditional, and a test asserts that an unlimited supervisor covering every region still cannot approve their own.
+
+---
+
+### D-078: Ownership is a rule about the resource, not about the role
+
+**Date:** 2026-09-15
+
+**Decision.** `a_customer_reads_their_own_things` matches on `principal.customer_id == resource.owner_customer_id`, and never on `role == CUSTOMER`.
+
+**Why.** A reviewer is also a person who buys tents. Keying on role would mean staff lose access to their own orders, or gain a second path to them, and both are wrong. Ownership is a property of the pair, so the rule should be about the pair.
+
+---
+
+### D-079: The refusal a caller sees carries no reason
+
+**Date:** 2026-09-15
+
+**Decision.** `Forbidden` says only "You are not allowed to do that." The real reason travels on the exception and into the log.
+
+**Why.** "You may not approve above 500.00" is useful to a colleague and equally useful to somebody mapping out where the limits are. The audit log is the right audience for the detail, because reading it is itself an authorized action.
+
+---
+
+### D-080: Regions are an array column, and unknown values narrow rather than raise
+
+**Date:** 2026-09-15
+
+**Decision.** `users.regions` is a Postgres array of strings. `Principal.from_user` drops values that are not in the `Region` enum.
+
+**Why.** A short list of labels read on every decision and never queried on its own does not earn a join table. Dropping unknown values means removing a region from the enum takes access away, which is the safe direction; raising would break every request the account makes, including the ones that had nothing to do with that region.
+
+---
+
+### D-081: `deskpilot auth can` exists so a refusal can be understood
+
+**Date:** 2026-09-15
+
+**Decision.** A CLI command asks the engine one question and prints the answer, the rule that produced it, and the attributes that were weighed.
+
+**Why.** Deny-by-default makes "it says no" the common experience, and "it says no" is useless on its own. Being able to see that `a_reviewer_approves_within_their_limit` refused because 90000 is above 50000 turns a mystery into a fact. It is also the quickest way to check a rule change did what was intended before wiring it into anything.
