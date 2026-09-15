@@ -108,8 +108,9 @@ def staff_read_tickets_in_their_regions(
     match resource:
         case resources.Ticket() | resources.Order():
             if principal.covers(resource.region):
-                return allow(f"staff covering {resource.region.value}")
-            return deny(f"this is a {resource.region.value} ticket and they do not cover it")
+                return allow(f"staff covering {resource.region.value if resource.region else '?'}")
+            named = resource.region.value if resource.region else "unknown region"
+            return deny(f"this is a {named} ticket and they do not cover it")
         case _:
             return None
 

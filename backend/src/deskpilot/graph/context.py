@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from langchain_core.embeddings import Embeddings
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deskpilot.authz.principal import Principal
 from deskpilot.config import PolicySearchSettings, ToolSettings
 
 
@@ -23,9 +24,9 @@ from deskpilot.config import PolicySearchSettings, ToolSettings
 class AgentContext:
     """Identity and dependencies for one agent run."""
 
-    # The customer whose data this run may touch. Comes from the authenticated
-    # session, never from the ticket text or the model.
-    customer_email: str
+    # Who the agent is acting for, with the attributes a policy weighs. Comes from
+    # the authenticated session, never from the ticket text or the model.
+    principal: Principal
     session_factory: async_sessionmaker[AsyncSession]
     # Used by tools that search the policy index. A dependency like the session
     # factory, not a model the agent reasons with.
@@ -34,3 +35,8 @@ class AgentContext:
     # its caller and a test can vary it without touching the environment.
     policy_search: PolicySearchSettings = field(default_factory=PolicySearchSettings)
     tools: ToolSettings = field(default_factory=ToolSettings)
+
+    @property
+    def customer_email(self) -> str:
+        """Convenience for logging and messages. Never used to decide anything."""
+        return self.principal.email

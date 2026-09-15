@@ -24,6 +24,11 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from deskpilot.authz.principal import Principal
+from deskpilot.db.models import Customer, Region, UserRole
 
 
 def tool_call(name: str, call_id: str = "call-1", **args: Any) -> dict[str, Any]:
@@ -174,3 +179,27 @@ async def invoke_tool(tool: BaseTool, context: Any, /, **args: Any) -> ToolMessa
     request = AIMessage("", tool_calls=[tool_call(tool.name, **args)])
     result = await builder.compile().ainvoke({"messages": [request]}, context=context)
     return next(m for m in result["messages"] if isinstance(m, ToolMessage))
+
+
+def fake_principal(
+    email: str = "noah.kim@example.com",
+    customer_id: int = 4,
+    region: Region | None = Region.NA,
+) -> Principal:
+    """A customer principal built without a database, for graph tests."""
+    return Principal(
+        user_id=1,
+        email=email,
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        customer_id=customer_id,
+        home_region=region,
+    )
+
+
+async def principal_for(sessions: async_sessionmaker[AsyncSession], email: str) -> Principal:
+    """A customer principal read from the seeded database, for integration tests."""
+    async with sessions() as session:
+        customer = await session.scalar(select(Customer).where(Customer.email == email))
+    assert customer is not None, f"no seeded customer {email}"
+    return Principal.for_customer(customer)

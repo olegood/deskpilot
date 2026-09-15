@@ -355,6 +355,9 @@ def test_a_principal_is_built_from_the_row_not_from_a_claim() -> None:
         regions=["eu", "na"],
         approval_limit_cents=50_000,
     )
+    # from_user reads the customer relationship, so it has to be set even when
+    # there is no customer. A staff account genuinely has none.
+    user.customer = None
 
     principal = Principal.from_user(user)
 
@@ -375,5 +378,29 @@ def test_an_unknown_region_narrows_rather_than_breaks() -> None:
         regions=["eu", "antarctica"],
         approval_limit_cents=0,
     )
+    user.customer = None
 
     assert Principal.from_user(user).regions == frozenset({Region.EU})
+
+
+def test_a_principal_without_a_login_has_no_user_id() -> None:
+    """Impersonation and the eval suite act for a customer nobody signed in as."""
+    from deskpilot.db.models import Customer, CustomerTier
+
+    principal = Principal.for_customer(
+        Customer(
+            id=4,
+            email="noah.kim@example.com",
+            full_name="Noah Kim",
+            region=Region.NA,
+            tier=CustomerTier.STANDARD,
+        )
+    )
+
+    assert principal.user_id is None
+    assert principal.customer_id == 4
+    assert principal.home_region is Region.NA
+    # No staff attributes: the escape hatch cannot hand any out.
+    assert principal.regions == frozenset()
+    assert principal.approval_limit_cents == 0
+    assert not principal.is_staff

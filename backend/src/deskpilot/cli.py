@@ -15,6 +15,9 @@ import typer
 from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
+
+# aliased: deskpilot.evals.runner also exports a select().
+from sqlalchemy import select as sql_select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deskpilot.auth import session_store
@@ -35,7 +38,15 @@ from deskpilot.authz.principal import Principal
 from deskpilot.authz.resources import Resource
 from deskpilot.config import Settings, get_settings
 from deskpilot.db.checkpointer import open_checkpointer, setup_checkpointer
-from deskpilot.db.models import AuditEntry, Region, Ticket, TicketStatus, User, UserRole
+from deskpilot.db.models import (
+    AuditEntry,
+    Customer,
+    Region,
+    Ticket,
+    TicketStatus,
+    User,
+    UserRole,
+)
 from deskpilot.db.seed import SeedError, seed
 from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.evals.dataset import DatasetError, load_cases
@@ -86,9 +97,9 @@ class Runtime:
     checkpointer: BaseCheckpointSaver[Any]
     embeddings: Embeddings
 
-    def context_for(self, customer_email: str) -> AgentContext:
+    def context_for(self, principal: Principal) -> AgentContext:
         return AgentContext(
-            customer_email=customer_email,
+            principal=principal,
             session_factory=self.sessions,
             embeddings=self.embeddings,
             policy_search=self.settings.policy_search,
@@ -205,9 +216,9 @@ def ticket_new_command(
 
     async def body() -> tuple[Ticket, AgentRun]:
         async with runtime() as rt:
-            acting_as = await current_customer(rt, customer)
+            acting_as = await current_principal(rt, customer)
             async with rt.sessions() as session:
-                ticket = await create_ticket(session, acting_as, subject)
+                ticket = await create_ticket(session, acting_as.email, subject)
                 result = await respond(rt, ticket, acting_as, message)
                 record_outcome(ticket, result)
                 await session.commit()
@@ -229,9 +240,9 @@ def ticket_reply_command(
 
     async def body() -> AgentRun:
         async with runtime() as rt:
-            acting_as = await current_customer(rt, customer)
+            acting_as = await current_principal(rt, customer)
             async with rt.sessions() as session:
-                ticket = await get_ticket(session, reference, acting_as)
+                ticket = await get_ticket(session, reference, acting_as.email)
                 if ticket.status is TicketStatus.RESOLVED:
                     raise TicketError(f"{ticket.reference} is resolved; open a new ticket instead")
                 result = await respond(rt, ticket, acting_as, message)
@@ -250,9 +261,9 @@ def ticket_list_command(customer: CustomerOption = None) -> None:
         async with runtime() as rt:
             # Scoped like every other ticket command. Before this went through the
             # resolver it listed every customer's tickets to anyone who ran it.
-            acting_as = await current_customer(rt, customer)
+            acting_as = await current_principal(rt, customer)
             async with rt.sessions() as session:
-                return await list_tickets(session, acting_as)
+                return await list_tickets(session, acting_as.email)
 
     tickets = run(body)
     if not tickets:
@@ -278,9 +289,9 @@ def ticket_show_command(
 
     async def body() -> tuple[Ticket, list[AnyMessage]]:
         async with runtime() as rt:
-            acting_as = await current_customer(rt, customer)
+            acting_as = await current_principal(rt, customer)
             async with rt.sessions() as session:
-                ticket = await get_ticket(session, reference, acting_as)
+                ticket = await get_ticket(session, reference, acting_as.email)
                 return ticket, await load_conversation(rt, ticket)
 
     ticket, history = run(body)
@@ -377,8 +388,8 @@ def policy_search_command(
         typer.secho(f"        {passage.content.splitlines()[-1][:100]}", dim=True)
 
 
-async def current_customer(rt: Runtime, requested: str | None) -> str:
-    """Decide which customer this command acts as.
+async def current_principal(rt: Runtime, requested: str | None) -> Principal:
+    """Decide who this command acts as, with the attributes a policy weighs.
 
     Normally that is whoever is logged in. `--as` overrides it, and is refused
     unless impersonation has been turned on: a flag that lets one person act as
@@ -392,7 +403,13 @@ async def current_customer(rt: Runtime, requested: str | None) -> str:
                 "DESKPILOT_AUTH__ALLOW_IMPERSONATION=true in backend/.env for local development."
             )
         logger.warning("impersonating %s because --as was given", requested)
-        return requested
+        async with rt.sessions() as session:
+            customer = await session.scalar(sql_select(Customer).where(Customer.email == requested))
+            if customer is None:
+                raise AuthError(f"no customer with the email {requested}")
+            # Deliberately a bare customer principal: no regions, no approval
+            # limit. The escape hatch cannot hand out staff attributes.
+            return Principal.for_customer(customer)
 
     saved = await active_session(rt)
     async with rt.sessions() as session:
@@ -402,7 +419,7 @@ async def current_customer(rt: Runtime, requested: str | None) -> str:
                 f"{user.email} is a {user.role.value} account with no customer record, "
                 "so it has no orders or tickets of its own."
             )
-        return user.customer.email
+        return Principal.from_user(user)
 
 
 async def active_session(rt: Runtime) -> SavedSession:
@@ -827,7 +844,7 @@ def ask_command(
 
     async def body() -> AgentRun:
         async with runtime() as rt:
-            context = rt.context_for(await current_customer(rt, customer))
+            context = rt.context_for(await current_principal(rt, customer))
             # No checkpointer, and a throwaway thread id: this run leaves no trace.
             return await run_agent(question, context, str(uuid.uuid4()), settings=rt.settings)
 
@@ -850,8 +867,8 @@ def record_outcome(ticket: Ticket, result: AgentRun) -> None:
         ticket.category = result.category
 
 
-async def respond(rt: Runtime, ticket: Ticket, customer_email: str, message: str) -> AgentRun:
-    context = rt.context_for(customer_email)
+async def respond(rt: Runtime, ticket: Ticket, principal: Principal, message: str) -> AgentRun:
+    context = rt.context_for(principal)
     return await run_agent(message, context, ticket.thread_id, rt.checkpointer, rt.settings)
 
 

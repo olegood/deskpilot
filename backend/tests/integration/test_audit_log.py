@@ -6,7 +6,7 @@ Run with: uv run pytest -m integration (needs `docker compose up -d`).
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deskpilot.auth.users import create_user
+from deskpilot.auth.users import create_user, get_user
 from deskpilot.authz import resources
 from deskpilot.authz.actions import Action, AuditEvent
 from deskpilot.authz.audit import guard, recent, record_event
@@ -30,7 +30,12 @@ async def reviewer(seeded_sessions: async_sessionmaker[AsyncSession]) -> Princip
         user.regions = [Region.EU.value]
         user.approval_limit_cents = 50_000
         await session.commit()
-        return Principal.from_user(user)
+    # Re-read with the customer relationship loaded: Principal.from_user needs it,
+    # and a freshly created object does not have it.
+    async with seeded_sessions() as session:
+        loaded = await get_user(session, "lena@acmegear.example")
+    assert loaded is not None
+    return Principal.from_user(loaded)
 
 
 def proposal(amount_cents: int, region: Region = Region.EU) -> resources.Proposal:

@@ -5,6 +5,10 @@ from __future__ import annotations
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolRuntime
 
+from deskpilot.authz import resources
+from deskpilot.authz.actions import Action
+from deskpilot.authz.audit import guard
+from deskpilot.authz.engine import Forbidden
 from deskpilot.graph.context import AgentContext
 from deskpilot.knowledge.search import PolicyPassage, search_policy_index
 
@@ -34,6 +38,16 @@ async def search_policy(question: str, runtime: ToolRuntime[AgentContext]) -> st
     context = runtime.context
     if context.embeddings is None:
         raise RuntimeError("policy search needs an embedding model in the agent context")
+    try:
+        await guard(
+            context.session_factory,
+            context.principal,
+            Action.POLICY_SEARCH,
+            resources.PolicyDocuments(),
+        )
+    except Forbidden:
+        return NOTHING_FOUND
+
     async with context.session_factory() as session:
         passages = await search_policy_index(
             session, context.embeddings, question, context.policy_search

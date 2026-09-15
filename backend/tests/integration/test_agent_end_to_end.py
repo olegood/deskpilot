@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from deskpilot.config import Settings
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.runner import AgentRun, run_agent
+from tests.support import principal_for
 
 pytestmark = pytest.mark.integration
 
@@ -28,7 +29,9 @@ async def ask(
     sessions: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> AgentRun:
-    context = AgentContext(customer_email=customer_email, session_factory=sessions)
+    context = AgentContext(
+        principal=await principal_for(sessions, customer_email), session_factory=sessions
+    )
     # A throwaway thread and no checkpointer: each of these is a one-shot run.
     return await run_agent(question, context, str(uuid.uuid4()), settings=settings)
 

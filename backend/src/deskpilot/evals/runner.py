@@ -16,9 +16,13 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+# aliased: this module already has a select() that narrows the case list.
+from sqlalchemy import select as sql_select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deskpilot.authz.principal import Principal
 from deskpilot.config import ModelRole, Settings
+from deskpilot.db.models import Customer
 from deskpilot.evals.dataset import DATASETS_DIR, EvalCase
 from deskpilot.evals.scoring import CaseResult, Summary, crashed, score, summarise
 from deskpilot.graph.agent import build_agent_graph
@@ -56,7 +60,18 @@ async def run_case(
     sessions: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> CaseResult:
-    """Run one case in isolation and score it."""
+    """Run one case in isolation and score it.
+
+    The principal is built from the seeded customer directly. Eval cases name a
+    customer, not a login, and giving them one would make the suite depend on
+    accounts that the seed does not create.
+    """
+    async with sessions() as session:
+        customer = await session.scalar(sql_select(Customer).where(Customer.email == case.customer))
+    if customer is None:
+        return crashed(case, ValueError(f"no seeded customer {case.customer}"), 0.0)
+    principal = Principal.for_customer(customer)
+
     graph = build_agent_graph(
         model=build_chat_model(ModelRole.AGENT, settings),
         tools=ALL_TOOLS,
@@ -65,7 +80,7 @@ async def run_case(
         classifier=build_chat_model(ModelRole.CLASSIFIER, settings),
     )
     context = AgentContext(
-        customer_email=case.customer,
+        principal=principal,
         session_factory=sessions,
         policy_search=settings.policy_search,
         tools=settings.tools,

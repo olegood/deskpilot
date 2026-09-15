@@ -2,7 +2,7 @@
 
 Deciding what somebody is allowed to do.
 
-> Last verified against: milestone 4, step 4.2.
+> Last verified against: milestone 4, step 4.3.
 
 Who somebody is is a separate question, answered by the
 [authentication guide](auth.md). This is about what happens next.
@@ -189,9 +189,64 @@ Entries store text rather than foreign keys, so they stay readable after the enu
 changes or the row is deleted. Rewriting history is exactly what an audit log must
 not do ([D-085](../decisions.md#d-085-the-audit-log-stores-text-not-foreign-keys)).
 
-## What is not built yet
+## How a tool asks
 
-The engine decides and the log remembers, but the tools still compare emails
-directly rather than calling `guard`. They give the same answers today. Step 4.3
-replaces those comparisons, at which point the two guard tests in the matrix become
-guarantees about the running system rather than about a library.
+`AgentContext` carries a `Principal` rather than an email. An email is an
+identifier; a principal is an identifier plus the attributes a policy weighs. Tools
+that compared emails encoded one policy each, in several places, and those drift
+([D-088](../decisions.md#d-088-the-agent-context-carries-a-principal-not-an-email)).
+
+```python
+order = await session.scalar(select(Order).where(Order.number == number))
+if order is None:
+    return NOT_FOUND
+try:
+    await guard(sessions, context.principal, Action.ORDER_VIEW,
+                resources.Order(order.customer_id, order.customer.region))
+except Forbidden:
+    return NOT_FOUND
+return describe(order)
+```
+
+**The row is loaded first and judged second.** Until this step the ownership check
+was a `WHERE` clause, which meant a cross-customer attempt looked exactly like a
+typo: same empty result, no trace of either. Now the policy is the single place
+ownership is decided, and a refusal becomes evidence
+([D-089](../decisions.md#d-089-a-row-is-loaded-first-and-judged-second)).
+
+What the customer is told does not change — "not found" either way, so the tool is
+still not an oracle for which order numbers are real. The difference is only in the
+log:
+
+```console
+$ uv run deskpilot audit tail --denied -n 1
+2026-09-15 10:21:49  deny   order.view   user=-
+        no rule allows order.view on this resource  [default]
+```
+
+The cost is that another customer's row is briefly in memory. It never leaves the
+function, and a test asserts a denial's recorded reason contains no order number.
+
+**A list is authorized by scope.** `list_orders` asks one question — may this
+principal read the orders of the customer they are — then filters by
+`principal.customer_id`. A per-row decision on a list is either a query the policy
+cannot express or a judgement per row that does not scale. It has a useful side
+effect: staff, who own no customer record, are refused before any query runs rather
+than shown somebody else's list
+([D-090](../decisions.md#d-090-a-list-is-authorized-by-scope-not-row-by-row)).
+
+## Principals without a login
+
+`Principal.user_id` is nullable. The impersonation hatch and the eval suite act for
+a customer that nobody signed in as, and `Principal.for_customer` builds a bare
+customer principal: no regions, no approval limit, no user id. The escape hatch
+cannot hand out staff attributes
+([D-091](../decisions.md#d-091-a-principal-may-have-no-user-id)).
+
+An audit entry for such an action records no actor, which is true and is what the
+nullable column expects.
+
+`Principal.from_user` raises if the `customer` relationship is not loaded, naming
+the `selectinload` to add. A home region is one of the attributes a policy weighs,
+so it is genuinely required, and failing at the boundary beats failing deep inside
+an unrelated call ([D-092](../decisions.md#d-092-building-a-principal-demands-a-loaded-relationship)).

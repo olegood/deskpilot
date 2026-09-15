@@ -951,3 +951,59 @@ visible instead of hiding it.
 **Decision.** `decide` knows nothing about a database. `guard` calls `decide`, records the outcome, and raises. The rest of the application calls `guard`.
 
 **Why.** [D-075](#d-075-a-policy-is-a-pure-function-of-principal-action-and-resource) is what makes the matrix tests possible, and putting a write inside `decide` would end that. Keeping recording in a separate layer means the policy stays enumerable and testable with no database at all, while every real call still leaves a trace.
+
+---
+
+### D-088: The agent context carries a principal, not an email
+
+**Date:** 2026-09-15
+
+**Decision.** `AgentContext.customer_email` is replaced by `AgentContext.principal`. `customer_email` survives as a read-only property for messages and logs, and decides nothing.
+
+**Why.** An email is an identifier; a principal is an identifier plus the attributes a policy weighs. Tools that compare emails encode one policy each, in eight places, and they drift. One principal means one policy, in one file, that can be enumerated.
+
+**Consequences.** Everything that builds a context now has to build a principal: the CLI from the signed-in user, the impersonation hatch and the eval suite from a seeded customer. [D-020](#d-020-identity-travels-in-the-graph-context-never-in-state) is unchanged — the principal still travels outside state and outside the message list, so the model cannot read or forge it.
+
+---
+
+### D-089: A row is loaded first and judged second
+
+**Date:** 2026-09-15
+
+**Decision.** `get_order` now queries by order number alone, builds a resource from the row, and asks the policy. This narrows [D-021](#d-021-not-found-and-not-yours-give-the-same-answer), which said the ownership check lived in the SQL so another customer's row was never loaded at all.
+
+**Why.** With the filter in the query, a cross-customer attempt was indistinguishable from a typo: the same empty result, and no trace of either. Loading the row and judging it means the policy is the single place ownership is decided, and the refusal becomes evidence in the audit log. What the customer is told does not change — "not found" either way, so the tool is still not an oracle for which order numbers are real.
+
+**Consequences.** Another customer's row is briefly in memory. It never leaves the function: the tool returns the fixed not-found message on refusal, and there is a test that a denial's recorded reason contains no order number. The trade is a moment of exposure inside one function, in exchange for the attempt being recorded at all.
+
+---
+
+### D-090: A list is authorized by scope, not row by row
+
+**Date:** 2026-09-15
+
+**Decision.** `list_orders` asks one question — may this principal read the orders of the customer they are — and then filters the query by `principal.customer_id`.
+
+**Why.** A per-row decision on a list is either a query the policy cannot express or a judgement per row that does not scale. The scope question is the honest one, and it has a useful side effect: a member of staff, who owns no customer record, is refused before any query runs rather than shown somebody else's list.
+
+---
+
+### D-091: A principal may have no user id
+
+**Date:** 2026-09-15
+
+**Decision.** `Principal.user_id` is `int | None`. `Principal.for_customer` builds one with no user id and no staff attributes.
+
+**Why.** Found by a foreign key violation. The impersonation hatch and the eval suite act for a customer that nobody signed in as, and a placeholder id of 0 pointed at no row in `users`. Recording that entry failed, and because audit writes swallow exceptions ([D-083](#d-083-recording-never-raises)) it failed silently. `None` is simply true: there is no actor.
+
+**Consequences.** An audit entry for an unauthenticated action records no actor, which is what the nullable column already expected. It also confirmed the risk in D-083: swallowing means a schema mistake is invisible, so tests that assert an entry exists are doing real work.
+
+---
+
+### D-092: Building a principal demands a loaded relationship
+
+**Date:** 2026-09-15
+
+**Decision.** It raises a `ValueError` naming `selectinload(User.customer)` when the relationship is unloaded, rather than letting `lazy="raise"` fire.
+
+**Why.** A customer's home region is one of the attributes a policy weighs, so the relationship is genuinely required. Left to `lazy="raise"`, the failure surfaces deep inside an unrelated call with a message that does not say what to do. Checking it at the boundary turns it into one sentence with the fix in it.

@@ -14,7 +14,7 @@ from deskpilot.graph.agent import build_agent_graph
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.runner import run_turn
 from deskpilot.tickets import TicketError, create_ticket, get_ticket, list_tickets, set_status
-from tests.support import ai_text, scripted
+from tests.support import ai_text, principal_for, scripted
 
 pytestmark = pytest.mark.integration
 
@@ -118,7 +118,9 @@ async def test_a_conversation_survives_a_fresh_checkpointer(
     async with seeded_sessions() as session:
         ticket = await create_ticket(session, NOAH, "Parcel never arrived")
         await session.commit()
-    context = AgentContext(customer_email=NOAH, session_factory=seeded_sessions)
+    context = AgentContext(
+        principal=await principal_for(seeded_sessions, NOAH), session_factory=seeded_sessions
+    )
 
     async with open_checkpointer(test_database) as checkpointer:
         await checkpointer.setup()
@@ -154,7 +156,9 @@ async def test_threads_do_not_leak_into_each_other(
         one = await create_ticket(session, NOAH, "First problem")
         two = await create_ticket(session, NOAH, "Second problem")
         await session.commit()
-    context = AgentContext(customer_email=NOAH, session_factory=seeded_sessions)
+    context = AgentContext(
+        principal=await principal_for(seeded_sessions, NOAH), session_factory=seeded_sessions
+    )
 
     async with open_checkpointer(test_database) as checkpointer:
         await checkpointer.setup()

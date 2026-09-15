@@ -145,8 +145,9 @@ AgentContext  ──►  graph.ainvoke(..., context=...)  ──►  ToolRuntime
      (email, session factory)                                   never into messages
 ```
 
-`AgentContext` is passed as LangGraph's typed context. It is not part of state, not
-part of the message list, and not checkpointed. Tools declare a `runtime:
+`AgentContext` is passed as LangGraph's typed context. It carries a `Principal` -
+the acting person plus the attributes a policy weighs - and is not part of state,
+not part of the message list, and not checkpointed. Tools declare a `runtime:
 ToolRuntime[AgentContext]` parameter and LangGraph injects it; that parameter is
 excluded from the schema the model sees, so the model supplies only business
 arguments such as an order number.

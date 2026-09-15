@@ -17,22 +17,28 @@ class Resource:
     """Base class, so a policy can match on type."""
 
 
+# region is optional on the resources a customer can own. Ownership does not look
+# at it, and for a scope check - "may I list my own orders" - there is no single
+# region to name. Staff rules treat a missing region as not covered, which is the
+# safe direction.
+
+
 @dataclass(frozen=True)
 class Ticket(Resource):
     owner_customer_id: int
-    region: Region
+    region: Region | None = None
 
 
 @dataclass(frozen=True)
 class Order(Resource):
     owner_customer_id: int
-    region: Region
+    region: Region | None = None
 
 
 @dataclass(frozen=True)
 class CustomerProfile(Resource):
     customer_id: int
-    region: Region
+    region: Region | None = None
 
 
 @dataclass(frozen=True)

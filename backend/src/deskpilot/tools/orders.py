@@ -7,14 +7,23 @@ from langgraph.prebuilt import ToolRuntime
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from deskpilot.authz import resources
+from deskpilot.authz.actions import Action
+from deskpilot.authz.audit import guard
+from deskpilot.authz.engine import Forbidden
 from deskpilot.db.models import Order, OrderItem, OrderStatus
 from deskpilot.graph.context import AgentContext
 
-# Same answer whether the order does not exist or belongs to someone else, so the
-# tool cannot be used to discover which order numbers are real.
+# Same answer whether the order does not exist or the policy refused it, so the
+# tool cannot be used to discover which order numbers are real. The audit log
+# records which of the two actually happened.
 NOT_FOUND = "No order with that number was found for this customer."
 NO_ORDERS = "This customer has not placed any orders."
 NONE_MATCHING = "This customer has no orders with that status."
+
+
+def format_money(cents: int, currency: str) -> str:
+    return f"{cents / 100:.2f} {currency}"
 
 
 def summarise(order: Order) -> str:
@@ -23,10 +32,6 @@ def summarise(order: Order) -> str:
         f"{order.number}  {order.placed_at.date().isoformat()}  "
         f"{order.status.value:<10}  {format_money(order.total_cents, order.currency)}"
     )
-
-
-def format_money(cents: int, currency: str) -> str:
-    return f"{cents / 100:.2f} {currency}"
 
 
 def describe(order: Order) -> str:
@@ -60,15 +65,30 @@ async def get_order(order_number: str, runtime: ToolRuntime[AgentContext]) -> st
     async with context.session_factory() as session:
         order = await session.scalar(
             select(Order)
-            .where(
-                Order.number == order_number.strip().upper(),
-                # Ownership check in the query itself: another customer's order can
-                # never be loaded, whatever the model asks for.
-                Order.customer.has(email=context.customer_email),
+            .where(Order.number == order_number.strip().upper())
+            .options(
+                selectinload(Order.items).selectinload(OrderItem.product),
+                # Needed to name the order's region to the policy. lazy="raise"
+                # means forgetting this fails loudly rather than intermittently.
+                selectinload(Order.customer),
             )
-            .options(selectinload(Order.items).selectinload(OrderItem.product))
         )
-    return describe(order) if order is not None else NOT_FOUND
+    if order is None:
+        return NOT_FOUND
+
+    # The row is loaded first and judged second, so the policy decides ownership
+    # and the attempt is recorded. The row never leaves this function when the
+    # answer is no.
+    try:
+        await guard(
+            context.session_factory,
+            context.principal,
+            Action.ORDER_VIEW,
+            resources.Order(owner_customer_id=order.customer_id, region=order.customer.region),
+        )
+    except Forbidden:
+        return NOT_FOUND
+    return describe(order)
 
 
 @tool
@@ -83,9 +103,26 @@ async def list_orders(
     Call get_order afterwards for the full detail of a particular order.
     """
     context = runtime.context
+    principal = context.principal
+    # A list cannot be judged row by row, so the decision is about the scope: may
+    # this principal read the orders of the customer they are? Staff, who own no
+    # customer record, are refused here rather than shown somebody else's list.
+    try:
+        await guard(
+            context.session_factory,
+            principal,
+            Action.ORDER_VIEW,
+            resources.Order(
+                owner_customer_id=principal.customer_id or -1,
+                region=principal.home_region,
+            ),
+        )
+    except Forbidden:
+        return NO_ORDERS
+
     limit = context.tools.max_orders_listed
     async with context.session_factory() as session:
-        owned = Order.customer.has(email=context.customer_email)
+        owned = Order.customer_id == principal.customer_id
         conditions = [owned] if status is None else [owned, Order.status == status]
 
         total = await session.scalar(select(func.count()).select_from(Order).where(*conditions))

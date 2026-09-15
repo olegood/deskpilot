@@ -17,7 +17,7 @@ from deskpilot.graph.agent import build_agent_graph
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.runner import run_turn
 from deskpilot.graph.state import AgentState
-from tests.support import ai_text, ai_with_tool_calls, scripted, tool_call
+from tests.support import ai_text, ai_with_tool_calls, fake_principal, scripted, tool_call
 
 THREAD = "ticket-thread-1"
 # run_turn needs an AgentContext, but no tool here touches the database.
@@ -110,7 +110,7 @@ async def test_run_turn_reports_this_turn_only() -> None:
         ]
     )
     graph = build_agent_graph(model, [echo_order], max_steps=6, checkpointer=InMemorySaver())
-    context = AgentContext(customer_email="noah.kim@example.com", session_factory=SESSIONS)
+    context = AgentContext(principal=fake_principal(), session_factory=SESSIONS)
 
     first = await run_turn(graph, "One.", context, THREAD)
     second = await run_turn(graph, "Two.", context, THREAD)
@@ -129,7 +129,7 @@ async def test_run_turn_reports_this_turn_only() -> None:
 async def test_escalation_is_reported_by_run_turn() -> None:
     model = scripted([ai_with_tool_calls(tool_call("echo_order", order_number="ORD-1042"))])
     graph = build_agent_graph(model, [echo_order], max_steps=2, checkpointer=InMemorySaver())
-    context = AgentContext(customer_email="noah.kim@example.com", session_factory=SESSIONS)
+    context = AgentContext(principal=fake_principal(), session_factory=SESSIONS)
 
     result = await run_turn(graph, "One.", context, THREAD)
 

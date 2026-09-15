@@ -5,8 +5,11 @@ from __future__ import annotations
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolRuntime
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
 
+from deskpilot.authz import resources
+from deskpilot.authz.actions import Action
+from deskpilot.authz.audit import guard
+from deskpilot.authz.engine import Forbidden
 from deskpilot.db.models import Customer, Order
 from deskpilot.graph.context import AgentContext
 
@@ -38,12 +41,24 @@ async def get_customer(runtime: ToolRuntime[AgentContext]) -> str:
     answer.
     """
     context = runtime.context
-    async with context.session_factory() as session:
-        customer = await session.scalar(
-            select(Customer)
-            .where(Customer.email == context.customer_email)
-            .options(selectinload(Customer.orders))
+    principal = context.principal
+    if principal.customer_id is None:
+        return NOT_FOUND
+    try:
+        await guard(
+            context.session_factory,
+            principal,
+            Action.CUSTOMER_VIEW,
+            resources.CustomerProfile(
+                customer_id=principal.customer_id,
+                region=principal.home_region,
+            ),
         )
+    except Forbidden:
+        return NOT_FOUND
+
+    async with context.session_factory() as session:
+        customer = await session.get(Customer, principal.customer_id)
         if customer is None:
             return NOT_FOUND
         order_count = await session.scalar(
