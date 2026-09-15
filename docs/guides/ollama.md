@@ -81,7 +81,7 @@ DESKPILOT_GUARD__MODEL=qwen3:8b
 
 **Cold starts.** The first call after loading can take several seconds. Deskpilot's timeouts (milestone 6) distinguish load time from a genuinely hung call.
 
-**Thinking tokens.** `qwen3.6` can reason before answering. Thinking tokens count against the token budget and add latency, so thinking is configured per role with the `REASONING` setting.
+**Thinking tokens.** `qwen3.6` can reason before answering. Thinking tokens count against the token budget and add latency, so thinking is configured per role with the `REASONING` setting. It is on for the agent only: without it, `qwen3.6` often says it will check a policy and then stops without calling the tool ([D-070](../decisions.md#d-070-thinking-is-on-for-the-agent-role)). If replies turn into promises with no tool calls, check that `DESKPILOT_AGENT__REASONING` has not been set to `false`.
 
 ## Verification
 

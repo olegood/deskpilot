@@ -65,7 +65,7 @@ class ModelSettings(BaseModel):
         if self.provider is Provider.ANTHROPIC and self.reasoning:
             raise ValueError(
                 "reasoning is not supported for anthropic yet; it arrives with the "
-                "Anthropic switch milestone"
+                "Anthropic switch milestone. Set REASONING=false for this role"
             )
         return self
 
@@ -218,7 +218,12 @@ class Settings(BaseSettings):
     ollama_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:11434")
     anthropic_api_key: SecretStr | None = None
 
-    agent: ModelSettings = ModelSettings(model="qwen3.6:35b")
+    agent: ModelSettings = ModelSettings(
+        model="qwen3.6:35b",
+        # Without thinking, qwen3.6 often says it will look something up and then
+        # ends its turn without calling the tool. See docs/decisions.md, D-070.
+        reasoning=True,
+    )
     classifier: ModelSettings = ModelSettings(
         model="qwen3.6:35b",
         # One short structured answer. A long one means the model ignored the schema.

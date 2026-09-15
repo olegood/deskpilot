@@ -769,3 +769,29 @@ visible instead of hiding it.
 **Decision.** `active_session` checks whether the saved access token has expired and refreshes it before use, with thirty seconds of skew.
 
 **Why.** Access tokens last fifteen minutes and the CLI is used in bursts hours apart, so almost every command would otherwise fail on a stale token. Refreshing at the point of use makes a long-running shell stay usable without the user noticing. The skew stops a token that is valid at the check from expiring during the request it was fetched for.
+
+---
+
+### D-070: Thinking is on for the agent role
+
+**Date:** 2026-09-15
+
+**Decision.** The agent role defaults to `reasoning: true`. The classifier, guard, and judge stay at `false`. This updates [D-015](#d-015-thinking-mode-is-always-explicit-and-off-by-default): thinking is still always explicit and still off by default for every other role, and D-015 left the agent's setting for evals to decide. The tool-selection suite decided it early, so the agent is not left broken until milestone 12.
+
+**Why.** With thinking off, `qwen3.6:35b` often says it will use a tool and then ends its turn without calling it: "Please hold on while I look up the details". The loop treats a reply with no tool calls as the final answer, so the customer gets a promise and nothing else. It is deterministic at temperature 0. Three cases failed this way on every run (`delivery-time`, `gold-tier-window`, `return-last-order`); `gold-tier-window` only stated the right number because it guessed. Replaying those exact model calls with one change at a time:
+
+| Change | Cases fixed |
+|---|---|
+| none | 0 of 3 |
+| no category hint in the prompt | 0 of 3 |
+| `presence_penalty` 0 (the model's Modelfile sets 1.5, which `ChatOllama` cannot override) | 1 of 3 |
+| `reasoning: true` | 3 of 3 |
+
+With thinking on, the full suite went from 12/16 to 15/16, with no critical failures. The remaining failure is a classifier label, not the agent. D-015's concern does not apply: `ChatOllama` returns thinking in `additional_kwargs["reasoning_content"]`, never in the content that becomes a customer's reply.
+
+**Consequences.**
+- A run costs more. The suite used about 60k tokens instead of 33k and took 427s instead of 104s. Thinking tokens count against the agent's 2048-token `num_predict`; a case used at most about 230, but a thought that fills the budget would leave an empty reply.
+- Thinking is kept on the `AIMessage`, so it is checkpointed with the conversation and sent back to the model on later turns. It is never shown to the customer, because every reader of a reply uses `.text`.
+- One reply in the confirming run used bullets and bold text, which the prompt forbids. Formatting drift under thinking is watched in evals rather than fixed here.
+- Switching the agent to Anthropic now needs `DESKPILOT_AGENT__REASONING=false` as well as the provider and model, because Anthropic thinking is still rejected. The validation error says so at startup.
+- Disabling it again is one variable, `DESKPILOT_AGENT__REASONING=false`, for example to compare runs or to try a model that calls tools reliably without thinking.

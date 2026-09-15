@@ -27,7 +27,7 @@ def test_ollama_agent_receives_configured_parameters() -> None:
     assert model.temperature == 0.0
     assert model.num_ctx == 32_768
     assert model.num_predict == 2048
-    assert model.reasoning is False
+    assert model.reasoning is True
     assert model.client_kwargs == {"timeout": 120.0}
 
 
