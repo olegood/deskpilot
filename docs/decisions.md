@@ -725,3 +725,47 @@ visible instead of hiding it.
 **Decision.** `log_out` revokes the family when the token is known and does nothing otherwise, without reporting which happened.
 
 **Why.** A logout that says whether a token existed is an oracle for testing stolen tokens. There is also nothing useful a caller could do with the failure.
+
+---
+
+### D-066: The CLI session lives in a file, and the trade-off is documented
+
+**Date:** 2026-09-15
+
+**Decision.** The session is saved to `~/.deskpilot/session.json`, written `0600` inside a `0700` directory, and `load` refuses to read a file that others can read.
+
+**Why.** It is a refresh token sitting in a file, which is worth being uncomfortable about. The alternatives are worse for a local tool: a keychain drags in a platform-specific dependency, and keeping it in memory means logging in for every command. Every command-line tool that does not make you log in every time works this way. The honest thing is to write it carefully and say so, rather than to pretend the problem is not there.
+
+**Consequences.** The file is created with the right mode from the start, using `os.open`, because writing first and `chmod`-ing afterwards leaves a window where it is world-readable. `__repr__` is overridden so a traceback cannot carry the tokens. The path is under the home directory rather than the repository, so a checkout cannot commit one.
+
+---
+
+### D-067: `--as` survives, as an opt-in escape hatch
+
+**Date:** 2026-09-15
+
+**Decision.** `--as` still works, but only when `DESKPILOT_AUTH__ALLOW_IMPERSONATION` is true, which it is not by default. Every use logs a warning. `.env.example` turns it on for local development.
+
+**Why.** A flag that lets one person act as another is precisely what this milestone exists to remove, so it cannot be the default. But the CLI is the only interface until the web milestone, and logging in as each of eight seeded customers to try something would make the project tedious to work on. Off in code, on in the local environment file, is the shape that keeps both properties: the insecure default never ships, and the developer never notices.
+
+**Consequences.** The refusal message names the exact command to log in and the exact variable to set, because an unexplained refusal is how a good default gets deleted in frustration.
+
+---
+
+### D-068: Every ticket command goes through one resolver
+
+**Date:** 2026-09-15
+
+**Decision.** `current_customer` decides who a command acts as, and every ticket command calls it.
+
+**Why.** Found by writing this step: `ticket list` had its own `--as` handling and did not consult the session at all, so it listed every customer's tickets to anybody who ran it. It had been that way since the tickets step. One resolver is one place to get it right, and a command that forgets to call it now fails to compile rather than quietly leaking.
+
+---
+
+### D-069: The access token is refreshed where it is used, not where it is issued
+
+**Date:** 2026-09-15
+
+**Decision.** `active_session` checks whether the saved access token has expired and refreshes it before use, with thirty seconds of skew.
+
+**Why.** Access tokens last fifteen minutes and the CLI is used in bursts hours apart, so almost every command would otherwise fail on a stale token. Refreshing at the point of use makes a long-running shell stay usable without the user noticing. The skew stops a token that is valid at the check from expiring during the request it was fetched for.

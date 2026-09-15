@@ -2,7 +2,7 @@
 
 Accounts, passwords, and how a login is checked.
 
-> Last verified against: milestone 3, step 3.2.
+> Last verified against: milestone 3, step 3.3.
 
 This covers **who somebody is**. What they are allowed to do is a separate
 question, answered by the ABAC milestone.
@@ -42,12 +42,13 @@ shell history and is visible in the process list to anyone else on the machine
 
 ```bash
 uv run deskpilot auth login noah.kim@example.com
+uv run deskpilot auth whoami
+uv run deskpilot auth logout
 ```
 
-`auth check` verifies a password and issues nothing. `auth login` issues a real
-session but does not yet save it, so it only reports what was minted — step 3.3 puts
-it on disk. The tokens themselves are never printed: a terminal scrollback is a poor
-place for a credential.
+`auth check` verifies a password and issues nothing; it is a smoke test for the
+hashing path. The tokens themselves are never printed: a terminal scrollback is a
+poor place for a credential.
 
 ## Passwords
 
@@ -161,6 +162,54 @@ SHA-256 rather than bcrypt: the input is already random, so there is no dictiona
 to run and no reason to be slow on a lookup path
 ([D-062](../decisions.md#d-062-refresh-tokens-are-opaque-and-stored-as-sha-256-digests)).
 
+## The saved session
+
+`auth login` writes `~/.deskpilot/session.json`, and every other command reads it to
+work out who it is acting for.
+
+That is a refresh token sitting in a file, which is worth being uncomfortable about.
+The alternatives are worse for a local tool: a keychain drags in a platform-specific
+dependency, and keeping it in memory means logging in for every command. Every
+command-line tool that does not make you log in every time works this way. So it is
+written carefully and the trade-off is stated rather than hidden
+([D-066](../decisions.md#d-066-the-cli-session-lives-in-a-file-and-the-trade-off-is-documented)).
+
+- `0600` inside a `0700` directory, created with the right mode from the start.
+  Writing first and `chmod`-ing afterwards leaves a window where it is world-readable.
+- Reading a file that others can read is **refused**, with the `chmod` to run.
+- `__repr__` is overridden, so a traceback cannot carry the tokens.
+- It lives under the home directory, not the repository, so a checkout cannot
+  commit one.
+
+The access token expires after fifteen minutes, and the CLI is used in bursts hours
+apart, so it is refreshed at the point of use rather than at login. Thirty seconds
+of skew stops a token that is valid at the check from expiring during the request it
+was fetched for ([D-069](../decisions.md#d-069-the-access-token-is-refreshed-where-it-is-used-not-where-it-is-issued)).
+
+## Who a command acts as
+
+Every ticket command asks one resolver, `current_customer`:
+
+1. `--as` was given, and impersonation is on → that customer, with a warning logged.
+2. `--as` was given, and impersonation is off → refused, naming the command to log
+   in and the variable to set.
+3. Otherwise → the logged-in user's linked customer.
+4. Logged in, but a `reviewer` or `admin` with no customer record → told plainly
+   that the account has no orders or tickets of its own.
+
+One resolver because writing this step found `ticket list` handling `--as` on its
+own and never consulting the session, which meant it listed every customer's tickets
+to anybody who ran it. It had been that way since tickets were added
+([D-068](../decisions.md#d-068-every-ticket-command-goes-through-one-resolver)).
+
+### `--as` is an escape hatch, not a feature
+
+It works only when `DESKPILOT_AUTH__ALLOW_IMPERSONATION` is true, which it is not by
+default. `.env.example` turns it on for local development, because the CLI is the
+only interface until the web milestone and logging in as each of eight seeded
+customers would make the project tedious to work on. It must never be true anywhere
+real ([D-067](../decisions.md#d-067---as-survives-as-an-opt-in-escape-hatch)).
+
 ## Revocation
 
 `users.token_version` invalidates every token an account holds without storing a
@@ -183,6 +232,8 @@ Refresh tokens survive, because they are rows rather than signed claims.
 | `tests/integration/test_users.py` | Registration, linking, normalisation, authentication, revocation |
 | `tests/unit/test_tokens.py` | Claims, and the attacks: forged key, tampered payload, `alg: none`, wrong audience, wrong issuer, missing claims |
 | `tests/integration/test_sessions.py` | Login, rotation, reuse detection, per-device families, logout, revocation |
+| `tests/unit/test_session_store.py` | The saved file: permissions, refusal to read a widened one, expiry and skew |
+| `tests/integration/test_cli_sessions.py` | The commands themselves, through typer's runner |
 
 One test is marked `slow`: it compares how long an unknown-address login takes
 against a real one. Timing on a shared machine is noisy, so it only asserts the same

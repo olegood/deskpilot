@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
@@ -16,7 +17,14 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deskpilot.auth.sessions import IssuedSession, log_in
+from deskpilot.auth import session_store
+from deskpilot.auth.session_store import SavedSession, SessionFileError
+from deskpilot.auth.sessions import (
+    authenticate_access_token,
+    log_in,
+    log_out,
+    refresh,
+)
 from deskpilot.auth.tokens import TokenError
 from deskpilot.auth.users import AuthError, authenticate, create_user, get_user, set_password
 from deskpilot.config import Settings, get_settings
@@ -33,6 +41,8 @@ from deskpilot.knowledge.search import PolicyPassage, search_policy_index
 from deskpilot.llm import build_embeddings
 from deskpilot.tickets import TicketError, create_ticket, get_ticket, list_tickets, set_status
 
+logger = logging.getLogger(__name__)
+
 app = typer.Typer(no_args_is_help=True, help="Deskpilot: AI support agent for Acme Gear.")
 db_app = typer.Typer(no_args_is_help=True, help="Database commands.")
 ticket_app = typer.Typer(no_args_is_help=True, help="Support ticket commands.")
@@ -47,8 +57,12 @@ app.add_typer(policy_app, name="policy")
 
 # Options reused across commands.
 CustomerOption = Annotated[
-    str,
-    typer.Option("--as", help="Email of the signed-in customer. The agent sees only their data."),
+    str | None,
+    typer.Option(
+        "--as",
+        help="Act as this customer instead of the logged-in one. Requires "
+        "DESKPILOT_AUTH__ALLOW_IMPERSONATION.",
+    ),
 ]
 VerboseOption = Annotated[
     bool, typer.Option("--verbose", "-v", help="Also show tool calls and token usage.")
@@ -93,7 +107,15 @@ async def runtime() -> AsyncIterator[Runtime]:
 # Failures a command can hit in normal use: a bad password, a missing ticket, a
 # stale policy index. They are reported as one red line and a non-zero exit, not as
 # a traceback. One tuple, so the two runners cannot drift apart.
-EXPECTED_ERRORS = (AuthError, DatasetError, PolicyIndexError, SeedError, TicketError, TokenError)
+EXPECTED_ERRORS = (
+    AuthError,
+    DatasetError,
+    PolicyIndexError,
+    SeedError,
+    SessionFileError,
+    TicketError,
+    TokenError,
+)
 
 
 def run_sync[T](call: Callable[[], T]) -> T:
@@ -167,19 +189,21 @@ def seed_command(
 @ticket_app.command("new")
 def ticket_new_command(
     message: Annotated[str, typer.Argument(help="The customer's first message.")],
-    customer: CustomerOption,
     subject: Annotated[str, typer.Option("--subject", help="Short summary of the problem.")],
+    customer: CustomerOption = None,
     verbose: VerboseOption = False,
 ) -> None:
     """Open a ticket and let the agent respond to the first message."""
 
     async def body() -> tuple[Ticket, AgentRun]:
-        async with runtime() as rt, rt.sessions() as session:
-            ticket = await create_ticket(session, customer, subject)
-            result = await respond(rt, ticket, customer, message)
-            record_outcome(ticket, result)
-            await session.commit()
-            return ticket, result
+        async with runtime() as rt:
+            acting_as = await current_customer(rt, customer)
+            async with rt.sessions() as session:
+                ticket = await create_ticket(session, acting_as, subject)
+                result = await respond(rt, ticket, acting_as, message)
+                record_outcome(ticket, result)
+                await session.commit()
+                return ticket, result
 
     ticket, result = run(body)
     typer.secho(f"Opened {ticket.reference}.\n", fg=typer.colors.GREEN)
@@ -190,17 +214,19 @@ def ticket_new_command(
 def ticket_reply_command(
     reference: Annotated[str, typer.Argument(help="Ticket reference, e.g. TCK-0001.")],
     message: Annotated[str, typer.Argument(help="The customer's next message.")],
-    customer: CustomerOption,
+    customer: CustomerOption = None,
     verbose: VerboseOption = False,
 ) -> None:
     """Add a message to an open ticket. The agent picks up where it left off."""
 
     async def body() -> AgentRun:
-        async with runtime() as rt, rt.sessions() as session:
-            ticket = await get_ticket(session, reference, customer)
-            if ticket.status is TicketStatus.RESOLVED:
-                raise TicketError(f"{ticket.reference} is resolved; open a new ticket instead")
-            result = await respond(rt, ticket, customer, message)
+        async with runtime() as rt:
+            acting_as = await current_customer(rt, customer)
+            async with rt.sessions() as session:
+                ticket = await get_ticket(session, reference, acting_as)
+                if ticket.status is TicketStatus.RESOLVED:
+                    raise TicketError(f"{ticket.reference} is resolved; open a new ticket instead")
+                result = await respond(rt, ticket, acting_as, message)
             record_outcome(ticket, result)
             await session.commit()
             return result
@@ -209,16 +235,16 @@ def ticket_reply_command(
 
 
 @ticket_app.command("list")
-def ticket_list_command(
-    customer: Annotated[
-        str | None, typer.Option("--as", help="Only this customer's tickets.")
-    ] = None,
-) -> None:
-    """List recent tickets, newest first."""
+def ticket_list_command(customer: CustomerOption = None) -> None:
+    """List your tickets, newest first."""
 
     async def body() -> list[Ticket]:
-        async with runtime() as rt, rt.sessions() as session:
-            return await list_tickets(session, customer)
+        async with runtime() as rt:
+            # Scoped like every other ticket command. Before this went through the
+            # resolver it listed every customer's tickets to anyone who ran it.
+            acting_as = await current_customer(rt, customer)
+            async with rt.sessions() as session:
+                return await list_tickets(session, acting_as)
 
     tickets = run(body)
     if not tickets:
@@ -235,7 +261,7 @@ def ticket_list_command(
 @ticket_app.command("show")
 def ticket_show_command(
     reference: Annotated[str, typer.Argument(help="Ticket reference, e.g. TCK-0001.")],
-    customer: CustomerOption,
+    customer: CustomerOption = None,
     tools: Annotated[
         bool, typer.Option("--tools", help="Also show tool calls and their results.")
     ] = False,
@@ -243,9 +269,11 @@ def ticket_show_command(
     """Print a ticket's conversation, read back from its checkpoint."""
 
     async def body() -> tuple[Ticket, list[AnyMessage]]:
-        async with runtime() as rt, rt.sessions() as session:
-            ticket = await get_ticket(session, reference, customer)
-            return ticket, await load_conversation(rt, ticket)
+        async with runtime() as rt:
+            acting_as = await current_customer(rt, customer)
+            async with rt.sessions() as session:
+                ticket = await get_ticket(session, reference, acting_as)
+                return ticket, await load_conversation(rt, ticket)
 
     ticket, history = run(body)
     category = ticket.category.value if ticket.category else "unclassified"
@@ -341,6 +369,52 @@ def policy_search_command(
         typer.secho(f"        {passage.content.splitlines()[-1][:100]}", dim=True)
 
 
+async def current_customer(rt: Runtime, requested: str | None) -> str:
+    """Decide which customer this command acts as.
+
+    Normally that is whoever is logged in. `--as` overrides it, and is refused
+    unless impersonation has been turned on: a flag that lets one person act as
+    another is exactly what this milestone exists to remove, so it is opt-in and
+    it is logged every time.
+    """
+    if requested is not None:
+        if not rt.settings.auth.allow_impersonation:
+            raise AuthError(
+                f"--as is disabled. Log in with `deskpilot auth login {requested}`, or set "
+                "DESKPILOT_AUTH__ALLOW_IMPERSONATION=true in backend/.env for local development."
+            )
+        logger.warning("impersonating %s because --as was given", requested)
+        return requested
+
+    saved = await active_session(rt)
+    async with rt.sessions() as session:
+        user = await authenticate_access_token(session, saved.access_token, rt.settings.auth)
+        if user.customer is None:
+            raise AuthError(
+                f"{user.email} is a {user.role.value} account with no customer record, "
+                "so it has no orders or tickets of its own."
+            )
+        return user.customer.email
+
+
+async def active_session(rt: Runtime) -> SavedSession:
+    """The saved session, refreshed if its access token has run out."""
+    saved = session_store.load(rt.settings.auth.session_file)
+    if saved is None:
+        raise AuthError("you are not logged in. Run: deskpilot auth login <email>")
+    if not saved.access_has_expired():
+        return saved
+
+    # Rotation happens here rather than at login, so a long-running shell stays
+    # usable without the user noticing anything.
+    async with rt.sessions() as session:
+        issued = await refresh(session, saved.refresh_token, rt.settings.auth)
+        await session.commit()
+    renewed = SavedSession.from_issued(issued)
+    session_store.save(renewed, rt.settings.auth.session_file)
+    return renewed
+
+
 # ── auth ────────────────────────────────────────────────────────────────────
 
 
@@ -380,28 +454,62 @@ def auth_register_command(
 def auth_login_command(
     email: Annotated[str, typer.Argument(help="Email address to log in as.")],
 ) -> None:
-    """Log in and issue a session.
-
-    Nothing is saved yet, so this only reports what was issued. Step 3.3 keeps the
-    session on disk and the other commands start using it.
-    """
+    """Log in and save the session, so other commands know who you are."""
     password = typer.prompt("Password", hide_input=True)
 
-    async def body() -> IssuedSession:
-        async with runtime() as rt, rt.sessions() as session:
-            issued = await log_in(session, email, password, rt.settings.auth)
-            await session.commit()
-            return issued
+    async def body() -> Path:
+        async with runtime() as rt:
+            async with rt.sessions() as session:
+                issued = await log_in(session, email, password, rt.settings.auth)
+                await session.commit()
+            path = rt.settings.auth.session_file
+            session_store.save(SavedSession.from_issued(issued), path)
+            return path
 
-    issued = run(body)
-    typer.secho(f"Logged in as {issued.email}.", fg=typer.colors.GREEN)
-    # The tokens themselves are not printed: a terminal scrollback is a bad place
-    # for a credential, and nothing can be done with them until step 3.3 anyway.
+    path = run(body)
+    typer.secho(f"Logged in. Session saved to {path}.", fg=typer.colors.GREEN)
+
+
+@auth_app.command("whoami")
+def auth_whoami_command() -> None:
+    """Show who the saved session belongs to, refreshing it if needed."""
+
+    async def body() -> tuple[str, str, str | None]:
+        async with runtime() as rt:
+            saved = await active_session(rt)
+            async with rt.sessions() as session:
+                user = await authenticate_access_token(
+                    session, saved.access_token, rt.settings.auth
+                )
+                return user.email, user.role.value, user.customer.email if user.customer else None
+
+    email, role, customer = run(body)
+    typer.secho(f"{email} ({role})", fg=typer.colors.GREEN)
     typer.secho(
-        f"  access token expires  {issued.access_expires_at:%Y-%m-%d %H:%M} UTC\n"
-        f"  refresh token expires {issued.refresh_expires_at:%Y-%m-%d %H:%M} UTC",
+        f"  customer record: {customer or 'none'}\n"
+        f"  session file:    {get_settings().auth.session_file}",
         dim=True,
     )
+
+
+@auth_app.command("logout")
+def auth_logout_command() -> None:
+    """Revoke this session on the server and delete it from disk."""
+
+    async def body() -> None:
+        async with runtime() as rt:
+            path = rt.settings.auth.session_file
+            saved = session_store.load(path)
+            if saved is not None:
+                async with rt.sessions() as session:
+                    await log_out(session, saved.refresh_token)
+                    await session.commit()
+            # Deleted whatever the server said. A logout that leaves the file
+            # behind because revocation failed is the worst of both.
+            session_store.clear(path)
+
+    run(body)
+    typer.secho("Logged out.", fg=typer.colors.GREEN)
 
 
 @auth_app.command("check")
@@ -516,14 +624,14 @@ def show_report(report: Report, path: Path | None) -> None:
 @app.command("ask")
 def ask_command(
     question: Annotated[str, typer.Argument(help="What the customer is asking.")],
-    customer: CustomerOption,
+    customer: CustomerOption = None,
     verbose: VerboseOption = False,
 ) -> None:
     """Ask a one-off question. Nothing is saved; use `ticket new` for a conversation."""
 
     async def body() -> AgentRun:
         async with runtime() as rt:
-            context = rt.context_for(customer)
+            context = rt.context_for(await current_customer(rt, customer))
             # No checkpointer, and a throwaway thread id: this run leaves no trace.
             return await run_agent(question, context, str(uuid.uuid4()), settings=rt.settings)
 

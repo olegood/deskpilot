@@ -129,6 +129,16 @@ class AuthSettings(BaseModel):
     # Safe to be long only because it rotates on every use and reuse is detected.
     refresh_token_days: int = Field(default=14, gt=0)
 
+    # Where the CLI keeps its session. Under the user's home rather than the repo,
+    # so a checkout cannot accidentally commit one.
+    session_file: Path = Path.home() / ".deskpilot" / "session.json"
+    # Lets --as name any customer without logging in. Off by default, because a
+    # switch that lets one person act as another is exactly the thing this
+    # milestone exists to remove. Turned on in development because the CLI is the
+    # only interface until the web milestone, and logging in as eight seeded
+    # customers to try something is not a good use of anybody's time.
+    allow_impersonation: bool = False
+
 
 class ToolSettings(BaseModel):
     """Limits that protect the context window from a tool's own output.

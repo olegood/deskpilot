@@ -77,6 +77,8 @@ JSON object, and a longer answer means it ignored the schema.
 | `DESKPILOT_AUTH__JWT_AUDIENCE` | `deskpilot-api` | `aud` claim, checked on decode, so a token minted for another service cannot be replayed here. |
 | `DESKPILOT_AUTH__ACCESS_TOKEN_MINUTES` | `15` | Access token lifetime. Short, because an individual access token cannot be revoked before it expires. |
 | `DESKPILOT_AUTH__REFRESH_TOKEN_DAYS` | `14` | Refresh token lifetime. Long only because it rotates on every use and reuse is detected. |
+| `DESKPILOT_AUTH__SESSION_FILE` | `~/.deskpilot/session.json` | Where the CLI keeps its session. Written `0600` inside a `0700` directory. |
+| `DESKPILOT_AUTH__ALLOW_IMPERSONATION` | `false` | Lets `--as` act as any customer without logging in. An impersonation backdoor; on in local development only, and every use is logged. |
 
 Changing `JWT_SECRET` invalidates every access token immediately. Refresh tokens
 survive, because they are database rows rather than signed claims.
