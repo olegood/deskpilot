@@ -13,6 +13,7 @@
 | [Database guide](guides/database.md) | PostgreSQL, migrations, schema conventions, seed data |
 | [Policy knowledge base](guides/policy-search.md) | The policy documents, chunking, embeddings, and search |
 | [Agent guide](guides/agent.md) | The graph, tools, where identity lives, and how to run the agent |
+| [Authorization guide](guides/authorization.md) | Attributes, rules, and how a decision is made |
 | [Evals guide](guides/evals.md) | The dataset, how cases are scored, and how to run the suite |
 | [Authentication guide](guides/auth.md) | Accounts, passwords, and how a login is checked |
 | [Authorization guide](guides/authorization.md) | Attributes, rules, and how a decision is made |

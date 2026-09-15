@@ -20,6 +20,7 @@ from deskpilot.auth.passwords import (
     verify_password,
     waste_time_like_a_real_check,
 )
+from deskpilot.authz.actions import AuditEvent
 from deskpilot.config import AuthSettings
 from deskpilot.db.models import Customer, User, UserRole
 
@@ -31,7 +32,17 @@ BAD_CREDENTIALS = "That email and password do not match an account."
 
 
 class AuthError(Exception):
-    """Raised when an account cannot be created or a login cannot be completed."""
+    """Raised when an account cannot be created or a login cannot be completed.
+
+    Carries the audit event that should be recorded for it, so a caller can write
+    the log entry without re-deriving what went wrong from the message - which it
+    could not do anyway, because every login failure shares one message.
+    """
+
+    def __init__(self, message: str, event: AuditEvent | None = None, user_id: int | None = None):
+        super().__init__(message)
+        self.event = event
+        self.user_id = user_id
 
 
 def normalise_email(email: str) -> str:
@@ -110,7 +121,7 @@ async def authenticate(
     if user is None:
         waste_time_like_a_real_check()
         logger.info("login failed: no account for that address")
-        raise AuthError(BAD_CREDENTIALS)
+        raise AuthError(BAD_CREDENTIALS, AuditEvent.LOGIN_FAILED)
 
     if is_locked(user):
         # Deliberately not "locked until 14:32". Saying so would confirm the
@@ -118,18 +129,19 @@ async def authenticate(
         # down. The log says it; the person typing does not hear it.
         waste_time_like_a_real_check()
         logger.info("login refused: account %s is locked", user.id)
-        raise AuthError(BAD_CREDENTIALS)
+        raise AuthError(BAD_CREDENTIALS, AuditEvent.LOGIN_REFUSED_LOCKED, user.id)
 
     if not verify_password(password, user.password_hash):
         record_failure(user, settings)
         logger.info("login failed: wrong password for user %s", user.id)
-        raise AuthError(BAD_CREDENTIALS)
+        event = AuditEvent.ACCOUNT_LOCKED if is_locked(user) else AuditEvent.LOGIN_FAILED
+        raise AuthError(BAD_CREDENTIALS, event, user.id)
 
     if not user.is_active:
         # Still the same message: a disabled account is not something to confirm
         # to whoever is typing at the login form.
         logger.info("login failed: account %s is disabled", user.id)
-        raise AuthError(BAD_CREDENTIALS)
+        raise AuthError(BAD_CREDENTIALS, AuditEvent.LOGIN_FAILED, user.id)
 
     record_success(user)
     return user

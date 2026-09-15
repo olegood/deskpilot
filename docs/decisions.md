@@ -887,3 +887,67 @@ visible instead of hiding it.
 **Decision.** A CLI command asks the engine one question and prints the answer, the rule that produced it, and the attributes that were weighed.
 
 **Why.** Deny-by-default makes "it says no" the common experience, and "it says no" is useless on its own. Being able to see that `a_reviewer_approves_within_their_limit` refused because 90000 is above 50000 turns a mystery into a fact. It is also the quickest way to check a rule change did what was intended before wiring it into anything.
+
+---
+
+### D-082: An audit entry is written in its own transaction
+
+**Date:** 2026-09-15
+
+**Decision.** `record_decision` and `record_event` open their own session, insert, and commit, independently of whatever the caller is doing.
+
+**Why.** The entry worth having most is the one for an action that was refused, and a refused action rolls back. Sharing the caller's transaction would roll the record back with it, so the log would contain only the things that succeeded — which is the opposite of an audit log. This is the same lesson as [D-073](#d-073-a-failed-login-must-be-committed), which is why it is worth stating twice: the interesting record is almost always on the failure path.
+
+**Consequences.** Two round trips instead of one on the audited paths. Acceptable, because the audited paths are refusals and consequential actions, not the routine reads.
+
+---
+
+### D-083: Recording never raises
+
+**Date:** 2026-09-15
+
+**Decision.** `_write` catches every exception, logs it, and returns.
+
+**Why.** A logging failure must not turn a working request into a broken one. The trade is real and is stated rather than hidden: this is an accountability record, not a ledger that has to balance. A system where the audit log is load-bearing enough to fail closed would need a different design, and would say so.
+
+---
+
+### D-084: Every denial is recorded; only consequential allows are
+
+**Date:** 2026-09-15
+
+**Decision.** A refusal is always written. An allow is written only when its action is in `ALWAYS_AUDITED`: approvals, edits, rejections, viewing any ticket, viewing traces, managing accounts.
+
+**Why.** A customer reading their own order happens on every turn of every conversation. Recording it would bury the entries somebody would actually want to find, and a log nobody can read is not evidence of anything. The rule is about consequence, not about volume: the audited allows are the ones where "who did this, and when" is the question.
+
+**Consequences.** The set is a policy decision, so it is asserted in a test rather than assumed. A new action that moves money must be added to it.
+
+---
+
+### D-085: The audit log stores text, not foreign keys
+
+**Date:** 2026-09-15
+
+**Decision.** `event` is a string, not an enum column. `resource` is a rendered description rather than a reference. Only `actor_user_id` is a key, and it is `ON DELETE SET NULL`.
+
+**Why.** An entry has to stay readable after the world around it changes. An enum column would force old entries to be rewritten or deleted when the enum changes, and rewriting history is exactly what an audit log must not do. A resource row may be deleted, and the record of what happened to it should outlive it.
+
+---
+
+### D-086: Decisions and authentication events share one log
+
+**Date:** 2026-09-15
+
+**Decision.** One `audit_log` table, with a `kind` column distinguishing `auth` from `authz`.
+
+**Why.** The question people ask is "what did this account do", and that answer spans both: a login, then a refusal, then an approval. Two tables would mean interleaving them by hand every time. The `kind` column keeps them separable when only one is wanted.
+
+---
+
+### D-087: The engine stays pure; a separate layer remembers
+
+**Date:** 2026-09-15
+
+**Decision.** `decide` knows nothing about a database. `guard` calls `decide`, records the outcome, and raises. The rest of the application calls `guard`.
+
+**Why.** [D-075](#d-075-a-policy-is-a-pure-function-of-principal-action-and-resource) is what makes the matrix tests possible, and putting a write inside `decide` would end that. Keeping recording in a separate layer means the policy stays enumerable and testable with no database at all, while every real call still leaves a trace.

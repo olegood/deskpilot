@@ -2,7 +2,7 @@
 
 Deciding what somebody is allowed to do.
 
-> Last verified against: milestone 4, step 4.1.
+> Last verified against: milestone 4, step 4.2.
 
 Who somebody is is a separate question, answered by the
 [authentication guide](auth.md). This is about what happens next.
@@ -130,8 +130,68 @@ rule nothing can trigger is either dead or a typo; another sweeps every action
 against every resource owned by somebody else and asserts a customer can never reach
 any of it.
 
+## The audit log
+
+`decide` is pure and knows nothing about a database. `guard` wraps it: decide,
+record, raise. The rest of the application calls `guard`, which keeps the policy
+enumerable while every real call still leaves a trace
+([D-087](../decisions.md#d-087-the-engine-stays-pure-a-separate-layer-remembers)).
+
+```bash
+uv run deskpilot audit tail -n 20
+uv run deskpilot audit tail --denied
+uv run deskpilot audit tail --as lena@acmegear.example
+```
+
+### What is recorded
+
+**Every denial, always.** A refusal is the thing somebody will come looking for.
+
+**Allows only when they are consequential** — approvals, edits, rejections, viewing
+any ticket, viewing traces, managing accounts. A customer reading their own order
+happens on every turn of every conversation, and recording it would bury the entries
+somebody actually wants to find
+([D-084](../decisions.md#d-084-every-denial-is-recorded-only-consequential-allows-are)).
+The set is a policy decision, so a test asserts it. **A new action that moves money
+has to be added to it.**
+
+**Authentication events too**, in the same table with a `kind` column: logins,
+lockouts, logouts, password changes, token reuse. The question people ask is "what
+did this account do", and that answer spans both
+([D-086](../decisions.md#d-086-decisions-and-authentication-events-share-one-log)).
+
+### Two properties worth knowing
+
+**An entry is written in its own transaction.** The record worth having most is the
+one for an action that was refused — and a refused action rolls back. Sharing the
+caller's transaction would roll the record back with it, leaving a log of only the
+things that worked
+([D-082](../decisions.md#d-082-an-audit-entry-is-written-in-its-own-transaction)).
+An integration test rolls the caller's transaction back and asserts the entry
+survives.
+
+**Recording never raises.** A logging failure must not turn a working request into a
+broken one. That is a real trade, stated rather than hidden: this is an
+accountability record, not a ledger that has to balance
+([D-083](../decisions.md#d-083-recording-never-raises)).
+
+### The log gets the reason; the caller does not
+
+```console
+$ uv run deskpilot audit tail --denied -n 1
+2026-09-15 09:58:02  deny   refund.approve   user=2
+        90000 is above their limit of 50000  [a_reviewer_approves_within_their_limit]
+```
+
+The person refused saw only "You are not allowed to do that."
+
+Entries store text rather than foreign keys, so they stay readable after the enum
+changes or the row is deleted. Rewriting history is exactly what an audit log must
+not do ([D-085](../decisions.md#d-085-the-audit-log-stores-text-not-foreign-keys)).
+
 ## What is not built yet
 
-The engine decides; almost nothing asks it yet. Tools still compare emails directly,
-which gives the same answers today. Step 4.3 replaces those comparisons with
-`require(...)`, and step 4.2 records every decision in an audit log.
+The engine decides and the log remembers, but the tools still compare emails
+directly rather than calling `guard`. They give the same answers today. Step 4.3
+replaces those comparisons, at which point the two guard tests in the matrix become
+guarantees about the running system rather than about a library.

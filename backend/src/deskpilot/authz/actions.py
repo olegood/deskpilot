@@ -25,3 +25,41 @@ class Action(StrEnum):
     # Administration.
     TRACE_VIEW = "trace.view"
     USER_MANAGE = "user.manage"
+
+
+# Actions worth recording even when they are allowed.
+#
+# Every denial is recorded, always. Allows are not: a customer reading their own
+# order happens on every turn of every conversation, and a log that records it
+# buries the entries somebody would actually want to find. These are the ones where
+# "who did this, and when" is the question, not "was anything refused".
+ALWAYS_AUDITED = frozenset(
+    {
+        Action.REFUND_APPROVE,
+        Action.PROPOSAL_EDIT,
+        Action.PROPOSAL_REJECT,
+        Action.TICKET_VIEW_ANY,
+        Action.TRACE_VIEW,
+        Action.USER_MANAGE,
+    }
+)
+
+
+class AuditEvent(StrEnum):
+    """Things worth recording that are not authorization decisions.
+
+    Three names carry "token" or "password", which the security linter reads as
+    hardcoded credentials. They are event names, suppressed one line at a time
+    rather than for the whole file.
+    """
+
+    LOGIN_SUCCEEDED = "login.succeeded"
+    LOGIN_FAILED = "login.failed"
+    LOGIN_REFUSED_LOCKED = "login.refused_locked"
+    ACCOUNT_LOCKED = "account.locked"
+    LOGGED_OUT = "session.logged_out"
+    TOKEN_REFRESHED = "session.refreshed"  # noqa: S105 - an event name
+    TOKEN_REUSE_DETECTED = "session.token_reuse_detected"  # noqa: S105 - an event name
+    PASSWORD_CHANGED = "account.password_changed"  # noqa: S105 - an event name
+    ACCOUNT_CREATED = "account.created"
+    ATTRIBUTES_CHANGED = "account.attributes_changed"

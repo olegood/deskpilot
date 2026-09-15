@@ -216,6 +216,50 @@ class User(Base):
         return f"User(id={self.id!r}, email={self.email!r}, role={self.role.value!r})"
 
 
+class AuditKind(StrEnum):
+    """Which subsystem produced an entry."""
+
+    AUTH = "auth"
+    AUTHZ = "authz"
+
+
+class AuditEntry(Base):
+    """One thing that happened, recorded for accountability.
+
+    Separate from tracing. A trace exists to debug an agent run and can be sampled,
+    truncated, or thrown away; an audit entry answers "who did that, and was it
+    allowed", so it is written even when the action that produced it failed.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    kind: Mapped[AuditKind] = mapped_column(str_enum(AuditKind, "audit_kind"), index=True)
+    # An Action value for authz entries, an AuditEvent value for auth ones. Stored
+    # as text rather than an enum: an old entry must stay readable after the enum
+    # changes, and rewriting history to match today's code defeats the purpose.
+    event: Mapped[str] = mapped_column(String(64), index=True)
+    # Null when nobody was identified, such as a login for an address with no account.
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    # What it was attempted on, as text. Not a foreign key: the row may be deleted,
+    # and the entry must survive it.
+    resource: Mapped[str | None] = mapped_column(String(200))
+    allowed: Mapped[bool] = mapped_column(index=True)
+    # The rule that decided, or "default" when nothing matched.
+    rule: Mapped[str | None] = mapped_column(String(100))
+    # Written for somebody reading this later, not for the person refused.
+    reason: Mapped[str] = mapped_column(String(500))
+
+    def __repr__(self) -> str:
+        outcome = "allow" if self.allowed else "deny"
+        return f"AuditEntry(id={self.id!r}, {outcome} {self.event!r} by {self.actor_user_id!r})"
+
+
 class RefreshToken(Base):
     """One issued refresh token.
 

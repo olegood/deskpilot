@@ -49,7 +49,7 @@ Each milestone ends with something runnable, tested, and documented.
 ## Milestone 4: authorization
 
 - [x] **4.1 The principal and the policy engine.** Attributes on accounts, typed principals, actions and resources, deny-by-default rules in order, an exhaustive decision matrix, and `deskpilot auth grant / can`.
-- [ ] **4.2 The audit log.** Every decision recorded, with the rule that made it.
+- [x] **4.2 The audit log.** An `audit_log` table written in its own transaction, denials always recorded and consequential allows too, auth events alongside decisions, and `deskpilot audit tail`.
 - [ ] **4.3 Principal injection.** Tools ask the engine instead of comparing emails.
 - [ ] **4.4 Wrap-up.** Docs pass and a demo.
 

@@ -28,13 +28,14 @@ from deskpilot.auth.sessions import (
 from deskpilot.auth.tokens import TokenError
 from deskpilot.auth.users import AuthError, authenticate, create_user, get_user, set_password
 from deskpilot.authz import resources
-from deskpilot.authz.actions import Action
+from deskpilot.authz.actions import Action, AuditEvent
+from deskpilot.authz.audit import recent, record_event
 from deskpilot.authz.engine import Decision, decide
 from deskpilot.authz.principal import Principal
 from deskpilot.authz.resources import Resource
 from deskpilot.config import Settings, get_settings
 from deskpilot.db.checkpointer import open_checkpointer, setup_checkpointer
-from deskpilot.db.models import Region, Ticket, TicketStatus, User, UserRole
+from deskpilot.db.models import AuditEntry, Region, Ticket, TicketStatus, User, UserRole
 from deskpilot.db.seed import SeedError, seed
 from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.evals.dataset import DatasetError, load_cases
@@ -55,9 +56,11 @@ policy_app = typer.Typer(no_args_is_help=True, help="Policy knowledge base comma
 app.add_typer(db_app, name="db")
 eval_app = typer.Typer(no_args_is_help=True, help="Evaluate the agent against saved cases.")
 auth_app = typer.Typer(no_args_is_help=True, help="Accounts and credentials.")
+audit_app = typer.Typer(no_args_is_help=True, help="What happened, and whether it was allowed.")
 app.add_typer(ticket_app, name="ticket")
 app.add_typer(eval_app, name="eval")
 app.add_typer(auth_app, name="auth")
+app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
 
 # Options reused across commands.
@@ -448,6 +451,12 @@ def auth_register_command(
                 rounds=rt.settings.auth.bcrypt_rounds,
             )
             await session.commit()
+            await record_event(
+                rt.sessions,
+                AuditEvent.ACCOUNT_CREATED,
+                f"created {user.email} as {user.role.value}",
+                actor_user_id=user.id,
+            )
             return user
 
     user = run(body)
@@ -467,11 +476,26 @@ def auth_login_command(
             async with rt.sessions() as session:
                 try:
                     issued = await log_in(session, email, password, rt.settings.auth)
-                finally:
-                    # Committed even on failure: log_in records the failed attempt
-                    # on the user row, and rolling it back would mean the lockout
-                    # counter never advances.
+                except AuthError as exc:
                     await session.commit()
+                    await record_event(
+                        rt.sessions,
+                        exc.event or AuditEvent.LOGIN_FAILED,
+                        f"login failed for {email}",
+                        actor_user_id=exc.user_id,
+                        allowed=False,
+                    )
+                    raise
+                # Committed even on failure, just above: log_in records the failed
+                # attempt on the user row, and rolling it back would mean the
+                # lockout counter never advances.
+                await session.commit()
+            await record_event(
+                rt.sessions,
+                AuditEvent.LOGIN_SUCCEEDED,
+                f"logged in as {issued.email}",
+                actor_user_id=issued.user_id,
+            )
             path = rt.settings.auth.session_file
             session_store.save(SavedSession.from_issued(issued), path)
             return path
@@ -514,6 +538,12 @@ def auth_logout_command() -> None:
                 async with rt.sessions() as session:
                     await log_out(session, saved.refresh_token)
                     await session.commit()
+                await record_event(
+                    rt.sessions,
+                    AuditEvent.LOGGED_OUT,
+                    f"signed out {saved.email}",
+                    actor_user_id=saved.user_id,
+                )
             # Deleted whatever the server said. A logout that leaves the file
             # behind because revocation failed is the worst of both.
             session_store.clear(path)
@@ -549,6 +579,12 @@ def auth_grant_command(
             if limit is not None:
                 user.approval_limit_cents = limit
             await session.commit()
+            await record_event(
+                rt.sessions,
+                AuditEvent.ATTRIBUTES_CHANGED,
+                f"regions={user.regions} approval_limit_cents={user.approval_limit_cents}",
+                actor_user_id=user.id,
+            )
             return user
 
     user = run(body)
@@ -655,9 +691,55 @@ def auth_passwd_command(
                 raise AuthError(f"no account for {email}")
             await set_password(session, user, password, rounds=rt.settings.auth.bcrypt_rounds)
             await session.commit()
+            await record_event(
+                rt.sessions,
+                AuditEvent.PASSWORD_CHANGED,
+                f"password changed for {user.email}; all sessions revoked",
+                actor_user_id=user.id,
+            )
 
     run(body)
     typer.secho("Password changed. Existing sessions have been revoked.", fg=typer.colors.GREEN)
+
+
+# ── audit ───────────────────────────────────────────────────────────────────
+
+
+@audit_app.command("tail")
+def audit_tail_command(
+    number: Annotated[int, typer.Option("-n", "--number", help="How many entries.")] = 20,
+    email: Annotated[
+        str | None, typer.Option("--as", help="Only entries for this account.")
+    ] = None,
+    denied: Annotated[bool, typer.Option("--denied", help="Only refusals.")] = False,
+) -> None:
+    """Show the most recent audit entries, newest first."""
+
+    async def body() -> list[AuditEntry]:
+        async with runtime() as rt, rt.sessions() as session:
+            actor_id = None
+            if email is not None:
+                user = await get_user(session, email)
+                if user is None:
+                    raise AuthError(f"no account for {email}")
+                actor_id = user.id
+            return await recent(session, number, actor_id, denied)
+
+    entries = run(body)
+    if not entries:
+        typer.echo("Nothing recorded yet.")
+        return
+    for entry in reversed(entries):
+        colour = typer.colors.GREEN if entry.allowed else typer.colors.RED
+        typer.secho(
+            f"{entry.at:%Y-%m-%d %H:%M:%S}  {'allow' if entry.allowed else 'deny ':<5}  "
+            f"{entry.event:<28}  user={entry.actor_user_id or '-'}",
+            fg=colour,
+        )
+        detail = f"        {entry.reason}"
+        if entry.rule:
+            detail += f"  [{entry.rule}]"
+        typer.secho(detail, dim=True)
 
 
 # ── eval ────────────────────────────────────────────────────────────────────
