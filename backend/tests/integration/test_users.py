@@ -3,9 +3,12 @@
 Run with: uv run pytest -m integration (needs `docker compose up -d`).
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deskpilot.auth.lockout import is_locked
 from deskpilot.auth.users import (
     BAD_CREDENTIALS,
     AuthError,
@@ -15,11 +18,13 @@ from deskpilot.auth.users import (
     revoke_all_tokens,
     set_password,
 )
+from deskpilot.config import AuthSettings
 from deskpilot.db.models import UserRole
 
 pytestmark = pytest.mark.integration
 
 NOAH = "noah.kim@example.com"
+ANA = "ana.garcia@example.com"
 GOOD = "correct horse battery staple"
 # 4 rounds instead of 12: the security property is the algorithm, not the cost.
 ROUNDS = 4
@@ -191,3 +196,121 @@ async def test_an_address_without_an_at_sign_is_refused(
     async with seeded_sessions() as session:
         with pytest.raises(AuthError, match="not an email address"):
             await create_user(session, "noah", GOOD, "Test Person", rounds=ROUNDS)
+
+
+# ── lockout ─────────────────────────────────────────────────────────────────
+
+LOCKOUT = AuthSettings(
+    jwt_secret="test-signing-key",
+    bcrypt_rounds=ROUNDS,
+    max_failed_logins=3,
+    lockout_seconds=60,
+)
+
+
+async def fail_login(sessions: async_sessionmaker[AsyncSession], times: int) -> None:
+    for _ in range(times):
+        async with sessions() as session:
+            with pytest.raises(AuthError):
+                await authenticate(session, NOAH, "not the password at all", LOCKOUT)
+            # Committed on failure: otherwise the counter never advances.
+            await session.commit()
+
+
+async def test_failed_attempts_are_counted(
+    seeded_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    await register(seeded_sessions)
+
+    await fail_login(seeded_sessions, 2)
+
+    async with seeded_sessions() as session:
+        user = await get_user(session, NOAH)
+    assert user is not None
+    assert user.failed_logins == 2
+    assert user.locked_until is None
+
+
+async def test_too_many_failures_lock_the_account(
+    seeded_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    await register(seeded_sessions)
+
+    await fail_login(seeded_sessions, LOCKOUT.max_failed_logins)
+
+    async with seeded_sessions() as session:
+        user = await get_user(session, NOAH)
+    assert user is not None
+    assert is_locked(user)
+
+
+async def test_a_locked_account_refuses_the_right_password(
+    seeded_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """The point of the lockout: guessing correctly afterwards still fails."""
+    await register(seeded_sessions)
+    await fail_login(seeded_sessions, LOCKOUT.max_failed_logins)
+
+    async with seeded_sessions() as session:
+        with pytest.raises(AuthError, match=BAD_CREDENTIALS):
+            await authenticate(session, NOAH, GOOD, LOCKOUT)
+
+
+async def test_a_lockout_says_nothing_about_being_a_lockout(
+    seeded_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """Saying "locked until 14:32" would confirm the account exists."""
+    await register(seeded_sessions)
+    await fail_login(seeded_sessions, LOCKOUT.max_failed_logins)
+
+    async with seeded_sessions() as session:
+        with pytest.raises(AuthError) as locked:
+            await authenticate(session, NOAH, GOOD, LOCKOUT)
+        with pytest.raises(AuthError) as unknown:
+            await authenticate(session, "nobody@example.com", GOOD, LOCKOUT)
+
+    assert str(locked.value) == str(unknown.value) == BAD_CREDENTIALS
+
+
+async def test_a_success_before_the_threshold_clears_the_counter(
+    seeded_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    await register(seeded_sessions)
+    await fail_login(seeded_sessions, LOCKOUT.max_failed_logins - 1)
+
+    async with seeded_sessions() as session:
+        await authenticate(session, NOAH, GOOD, LOCKOUT)
+        await session.commit()
+
+    async with seeded_sessions() as session:
+        user = await get_user(session, NOAH)
+    assert user is not None
+    assert user.failed_logins == 0
+
+
+async def test_an_expired_lockout_lets_the_right_password_through(
+    seeded_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    await register(seeded_sessions)
+    await fail_login(seeded_sessions, LOCKOUT.max_failed_logins)
+
+    async with seeded_sessions() as session:
+        user = await get_user(session, NOAH)
+        assert user is not None
+        # Wind the clock forward rather than waiting a minute in a test.
+        user.locked_until = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+
+    async with seeded_sessions() as session:
+        assert (await authenticate(session, NOAH, GOOD, LOCKOUT)).email == NOAH
+
+
+async def test_locking_one_account_does_not_lock_another(
+    seeded_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    await register(seeded_sessions)
+    await register(seeded_sessions, ANA)
+    await fail_login(seeded_sessions, LOCKOUT.max_failed_logins)
+
+    async with seeded_sessions() as session:
+        assert (await authenticate(session, ANA, GOOD, LOCKOUT)).email == ANA

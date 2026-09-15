@@ -16,6 +16,7 @@ def load(**overrides: Any) -> Settings:
 
 
 def anthropic_agent() -> ModelSettings:
+    # reasoning stays False: anthropic thinking is rejected until its own milestone.
     return ModelSettings(provider=Provider.ANTHROPIC, model="claude-sonnet-5", timeout_s=45.0)
 
 
@@ -27,7 +28,7 @@ def test_ollama_agent_receives_configured_parameters() -> None:
     assert model.temperature == 0.0
     assert model.num_ctx == 32_768
     assert model.num_predict == 2048
-    assert model.reasoning is True
+    assert model.reasoning is True  # D-070
     assert model.client_kwargs == {"timeout": 120.0}
 
 

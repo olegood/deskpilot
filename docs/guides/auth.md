@@ -2,7 +2,7 @@
 
 Accounts, passwords, and how a login is checked.
 
-> Last verified against: milestone 3, step 3.3.
+> Last verified against: milestone 3 (complete).
 
 This covers **who somebody is**. What they are allowed to do is a separate
 question, answered by the ABAC milestone.
@@ -210,6 +210,32 @@ only interface until the web milestone and logging in as each of eight seeded
 customers would make the project tedious to work on. It must never be true anywhere
 real ([D-067](../decisions.md#d-067---as-survives-as-an-opt-in-escape-hatch)).
 
+## Lockout
+
+Five consecutive failed logins lock an account for a minute. Each further failure
+doubles the lockout, capped at an hour. A success clears the counter, and expiry is
+by timestamp, so nothing has to run to unlock an account
+([D-071](../decisions.md#d-071-account-lockout-with-exponential-backoff-and-why-that-is-a-trade)).
+
+Doubling matters more than the starting value. It makes sustained guessing cost
+exponentially more, while one fat-fingered evening costs a minute.
+
+**This is a trade, not a free win.** Anybody who knows an email address can lock its
+owner out by failing on purpose. That is why the first lockout is short, and why the
+real answer — rate limiting by source address — waits for the web milestone, where
+there is a source address to limit by.
+
+A locked account gives the same message as a wrong password, and takes the same
+time. Saying "locked until 14:32" would confirm the account exists, and would let an
+attacker watch their own lockout tick down
+([D-072](../decisions.md#d-072-a-lockout-is-not-announced)). The log records what
+actually happened.
+
+One consequence worth knowing about: **a failed login has to be committed.** The
+counter lives on the user row, and the only thing worth recording happens on the
+failure path. Committing only on success would leave the whole mechanism in place
+and permanently inert ([D-073](../decisions.md#d-073-a-failed-login-must-be-committed)).
+
 ## Revocation
 
 `users.token_version` invalidates every token an account holds without storing a
@@ -234,6 +260,7 @@ Refresh tokens survive, because they are rows rather than signed claims.
 | `tests/integration/test_sessions.py` | Login, rotation, reuse detection, per-device families, logout, revocation |
 | `tests/unit/test_session_store.py` | The saved file: permissions, refusal to read a widened one, expiry and skew |
 | `tests/integration/test_cli_sessions.py` | The commands themselves, through typer's runner |
+| `tests/unit/test_lockout.py` | The backoff arithmetic, thresholds, and expiry |
 
 One test is marked `slow`: it compares how long an unknown-address login takes
 against a real one. Timing on a shared machine is noisy, so it only asserts the same

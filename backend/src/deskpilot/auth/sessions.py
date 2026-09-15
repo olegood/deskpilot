@@ -51,7 +51,7 @@ async def log_in(
     session: AsyncSession, email: str, password: str, settings: AuthSettings
 ) -> IssuedSession:
     """Check credentials and start a new token family. Does not commit."""
-    user = await authenticate(session, email, password)
+    user = await authenticate(session, email, password, settings)
     return await _issue(session, user, new_family_id(), settings)
 
 

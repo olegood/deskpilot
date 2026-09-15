@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -182,6 +183,13 @@ class User(Base):
     # Bumped to invalidate every token this user holds, without storing a list of
     # them. A token whose version does not match the row is refused.
     token_version: Mapped[int] = mapped_column(default=1)
+    # Consecutive failed logins. Reset by a success, and by a lockout expiring.
+    # server_default as well as default: without it, adding this column to a table
+    # that already has rows fails with a NOT NULL violation, and any insert that
+    # bypasses the ORM would too.
+    failed_logins: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    # Set while the account is locked out. Nullable, because most accounts never are.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Set for customer accounts, so a login can be tied to the orders it may see.
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -65,7 +65,7 @@ class ModelSettings(BaseModel):
         if self.provider is Provider.ANTHROPIC and self.reasoning:
             raise ValueError(
                 "reasoning is not supported for anthropic yet; it arrives with the "
-                "Anthropic switch milestone. Set REASONING=false for this role"
+                "Anthropic switch milestone"
             )
         return self
 
@@ -128,6 +128,14 @@ class AuthSettings(BaseModel):
     # Long, because this is what saves the user from logging in every quarter hour.
     # Safe to be long only because it rotates on every use and reuse is detected.
     refresh_token_days: int = Field(default=14, gt=0)
+
+    # Failed logins allowed before an account is locked. Low enough to stop a
+    # password being guessed, high enough to survive a person mistyping.
+    max_failed_logins: int = Field(default=5, gt=0)
+    # First lockout, doubling with each further failure up to the cap. Short at
+    # first, because the common cause is a typo, not an attack.
+    lockout_seconds: int = Field(default=60, gt=0)
+    max_lockout_seconds: int = Field(default=3600, gt=0)
 
     # Where the CLI keeps its session. Under the user's home rather than the repo,
     # so a checkout cannot accidentally commit one.
@@ -218,12 +226,10 @@ class Settings(BaseSettings):
     ollama_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:11434")
     anthropic_api_key: SecretStr | None = None
 
-    agent: ModelSettings = ModelSettings(
-        model="qwen3.6:35b",
-        # Without thinking, qwen3.6 often says it will look something up and then
-        # ends its turn without calling the tool. See docs/decisions.md, D-070.
-        reasoning=True,
-    )
+    # reasoning=True: with thinking off, qwen3.6 announces a tool call and then ends
+    # its turn without making it, so the customer gets a promise and no answer. See
+    # docs/decisions.md, D-070.
+    agent: ModelSettings = ModelSettings(model="qwen3.6:35b", reasoning=True)
     classifier: ModelSettings = ModelSettings(
         model="qwen3.6:35b",
         # One short structured answer. A long one means the model ignored the schema.

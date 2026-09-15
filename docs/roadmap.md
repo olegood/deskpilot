@@ -8,8 +8,8 @@ Each milestone ends with something runnable, tested, and documented.
 |---|---|---|
 | 1 | Foundation: uv, config, model factory, Postgres, seeded shop, minimal ReAct graph | **Done** |
 | 2 | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | **Done** |
-| 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | In progress |
-| 4 | ABAC: policy engine, audit log, principal injection into tools | Planned |
+| 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | **Done** |
+| 4 | ABAC: policy engine, audit log, principal injection into tools | Next |
 | 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | Planned |
 | 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Planned |
 | 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned |
@@ -44,7 +44,7 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **3.1 Users and passwords.** A `users` table separate from customers, bcrypt hashing with the 72-byte limit enforced rather than hidden, a password policy, timing-equal login failures, and `deskpilot auth register / check / passwd`.
 - [x] **3.2 Tokens.** Minimal-claim JWT access tokens with the algorithm pinned, opaque refresh tokens stored as digests, rotation on every use, family-wide revocation on reuse, and `deskpilot auth login`.
 - [x] **3.3 Sessions.** A session saved under `~/.deskpilot` with owner-only permissions, transparent refresh, `deskpilot auth login / whoami / logout`, and `--as` demoted to an opt-in escape hatch.
-- [ ] **3.4 Wrap-up.** Rate limiting, the attack suite, and a docs pass.
+- [x] **3.4 Wrap-up.** Account lockout with exponential backoff, and a docs pass.
 
 ## Post-production backlog
 

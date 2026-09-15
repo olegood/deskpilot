@@ -772,26 +772,46 @@ visible instead of hiding it.
 
 ---
 
-### D-070: Thinking is on for the agent role
+### D-071: Account lockout with exponential backoff, and why that is a trade
 
 **Date:** 2026-09-15
 
-**Decision.** The agent role defaults to `reasoning: true`. The classifier, guard, and judge stay at `false`. This updates [D-015](#d-015-thinking-mode-is-always-explicit-and-off-by-default): thinking is still always explicit and still off by default for every other role, and D-015 left the agent's setting for evals to decide. The tool-selection suite decided it early, so the agent is not left broken until milestone 12.
+**Decision.** Five consecutive failures lock an account for a minute. Each further failure doubles the lockout, capped at an hour. A success clears the counter. Expiry is by timestamp, so nothing has to run to unlock an account.
 
-**Why.** With thinking off, `qwen3.6:35b` often says it will use a tool and then ends its turn without calling it: "Please hold on while I look up the details". The loop treats a reply with no tool calls as the final answer, so the customer gets a promise and nothing else. It is deterministic at temperature 0. Three cases failed this way on every run (`delivery-time`, `gold-tier-window`, `return-last-order`); `gold-tier-window` only stated the right number because it guessed. Replaying those exact model calls with one change at a time:
+**Why.** Password guessing is the attack bcrypt slows down but does not stop. Doubling matters more than the starting value: it makes sustained guessing cost exponentially more, while one fat-fingered evening costs a minute.
 
-| Change | Cases fixed |
-|---|---|
-| none | 0 of 3 |
-| no category hint in the prompt | 0 of 3 |
-| `presence_penalty` 0 (the model's Modelfile sets 1.5, which `ChatOllama` cannot override) | 1 of 3 |
-| `reasoning: true` | 3 of 3 |
+**Consequences.** This is a genuine trade, not a free win. Anybody who knows an email address can lock its owner out by failing on purpose. That is why the first lockout is short, and why the real answer — rate limiting by source address — waits for the web milestone, where there is a source address to limit by. Until then an account can be locked, but only briefly and only one at a time.
 
-With thinking on, the full suite went from 12/16 to 15/16, with no critical failures. The remaining failure is a classifier label, not the agent. D-015's concern does not apply: `ChatOllama` returns thinking in `additional_kwargs["reasoning_content"]`, never in the content that becomes a customer's reply.
+---
 
-**Consequences.**
-- A run costs more. The suite used about 60k tokens instead of 33k and took 427s instead of 104s. Thinking tokens count against the agent's 2048-token `num_predict`; a case used at most about 230, but a thought that fills the budget would leave an empty reply.
-- Thinking is kept on the `AIMessage`, so it is checkpointed with the conversation and sent back to the model on later turns. It is never shown to the customer, because every reader of a reply uses `.text`.
-- One reply in the confirming run used bullets and bold text, which the prompt forbids. Formatting drift under thinking is watched in evals rather than fixed here.
-- Switching the agent to Anthropic now needs `DESKPILOT_AGENT__REASONING=false` as well as the provider and model, because Anthropic thinking is still rejected. The validation error says so at startup.
-- Disabling it again is one variable, `DESKPILOT_AGENT__REASONING=false`, for example to compare runs or to try a model that calls tools reliably without thinking.
+### D-072: A lockout is not announced
+
+**Date:** 2026-09-15
+
+**Decision.** A locked account raises the same message as a wrong password and an unknown address, and spends the same time doing it.
+
+**Why.** "Locked until 14:32" confirms the account exists, which is the enumeration channel [D-055](#d-055-every-login-failure-looks-and-costs-the-same) closed. It also lets an attacker watch their own lockout tick down and time the next attempt.
+
+**Consequences.** A legitimate user who locked themselves out is told only that the credentials do not match, which is worse for them. The log says exactly what happened. With per-address rate limiting in the web milestone there will be a safe way to be more helpful, because a lockout can be reported to a session that has already proved it owns the address.
+
+---
+
+### D-073: A failed login must be committed
+
+**Date:** 2026-09-15
+
+**Decision.** `authenticate` mutates the failure counter and does not commit, like every other service. Callers commit in a `finally`, so the attempt is recorded even though the login raised.
+
+**Why.** The natural shape — commit on success, roll back on failure — silently disables the whole lockout, because the only thing worth recording happens on the failure path. It would have looked like it worked: the code is all there, and the counter would sit at zero for ever.
+
+---
+
+### D-074: A NOT NULL column added to a populated table needs a server default
+
+**Date:** 2026-09-15
+
+**Decision.** `users.failed_logins` is declared with both a Python `default` and a `server_default`.
+
+**Why.** Found by the migration failing: `column "failed_logins" of relation "users" contains null values`. Autogenerate writes `nullable=False` with no default, which cannot work on a table that already has rows. A `server_default` on the model makes autogenerate emit it, keeps `alembic check` quiet, and also covers any insert that bypasses the ORM.
+
+**Consequences.** It generalises. Any non-nullable column added to a table that already has data needs a server default, or a three-step migration: add nullable, backfill, then enforce.

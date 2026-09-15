@@ -27,10 +27,11 @@ by strangers is the actual work.
 
 ## Status
 
-**Milestones 1 and 2 of 14 complete.** The agent holds a multi-turn conversation
+**Milestones 1 to 3 of 14 complete.** The agent holds a multi-turn conversation
 about a customer's own orders, retrieves the shop's published policies from a vector
-index, labels each ticket, and is measured by a small eval suite. Everything runs on
-a local model.
+index, labels each ticket, and is measured by a small eval suite. People log in with
+a real password and a real session, and a command acts as whoever is logged in.
+Everything runs on a local model.
 
 See the [roadmap](docs/roadmap.md) for what's next.
 
@@ -39,8 +40,12 @@ See the [roadmap](docs/roadmap.md) for what's next.
 Full instructions are in the [setup guide](docs/guides/setup.md). Once it's running:
 
 ```console
+$ uv run deskpilot auth login kenji.tanaka@example.com
+Password:
+Logged in. Session saved to ~/.deskpilot/session.json.
+
 $ uv run deskpilot ticket new "The zip on my tent broke after a few trips" \
-      --as kenji.tanaka@example.com --subject "Broken zip" --verbose
+      --subject "Broken zip" --verbose
 Opened TCK-0001.
 
 Sorry to hear about the zip. Acme Gear covers manufacturing defects for two years
@@ -54,15 +59,14 @@ The conversation is checkpointed in PostgreSQL, so replying is a separate proces
 picking it back up:
 
 ```console
-$ uv run deskpilot ticket reply TCK-0001 "It was a gift, do I need the receipt?" \
-      --as kenji.tanaka@example.com
+$ uv run deskpilot ticket reply TCK-0001 "It was a gift, do I need the receipt?"
 ```
 
 Ask about somebody else's order and the agent can't see it, no matter how the
 question is phrased:
 
 ```console
-$ uv run deskpilot ask "What's the status of ORD-1001?" --as noah.kim@example.com
+$ uv run deskpilot ask "What's the status of ORD-1001?"
 I couldn't find an order with that number on your account. Could you double-check
 the number for me?
 ```
@@ -113,6 +117,7 @@ SQLAlchemy, Alembic, pytest, Ollama, React and TypeScript.
 - [Setup guide](docs/guides/setup.md) — get a machine running from zero
 - [Agent guide](docs/guides/agent.md) — the graph, tools, and identity
 - [Evals guide](docs/guides/evals.md) — how behaviour is measured
+- [Authentication guide](docs/guides/auth.md) — accounts, passwords, tokens, sessions
 - [Architecture overview](docs/architecture/overview.md) — the whole system
 - [Decision log](docs/decisions.md) — why it's built this way
 - [All documentation](docs/README.md)

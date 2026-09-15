@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from deskpilot.auth.lockout import is_locked, record_failure, record_success
 from deskpilot.auth.passwords import (
     PasswordError,
     check_password_policy,
@@ -19,6 +20,7 @@ from deskpilot.auth.passwords import (
     verify_password,
     waste_time_like_a_real_check,
 )
+from deskpilot.config import AuthSettings
 from deskpilot.db.models import Customer, User, UserRole
 
 logger = logging.getLogger(__name__)
@@ -90,25 +92,46 @@ async def get_user(session: AsyncSession, email: str) -> User | None:
     return user
 
 
-async def authenticate(session: AsyncSession, email: str, password: str) -> User:
+async def authenticate(
+    session: AsyncSession, email: str, password: str, settings: AuthSettings | None = None
+) -> User:
     """Check credentials and return the account, or raise AuthError.
 
     Every failure takes roughly the same time and gives the same message, so a
-    caller cannot learn whether an address is registered.
+    caller cannot learn whether an address is registered, whether it is disabled,
+    or whether it is currently locked.
+
+    Mutates the failure counter but does not commit. The caller must commit even
+    when this raises, or a failed attempt is never recorded and the lockout never
+    happens.
     """
+    settings = settings or AuthSettings()
     user = await get_user(session, email)
     if user is None:
         waste_time_like_a_real_check()
         logger.info("login failed: no account for that address")
         raise AuthError(BAD_CREDENTIALS)
+
+    if is_locked(user):
+        # Deliberately not "locked until 14:32". Saying so would confirm the
+        # account exists, and would let an attacker watch their own lockout tick
+        # down. The log says it; the person typing does not hear it.
+        waste_time_like_a_real_check()
+        logger.info("login refused: account %s is locked", user.id)
+        raise AuthError(BAD_CREDENTIALS)
+
     if not verify_password(password, user.password_hash):
+        record_failure(user, settings)
         logger.info("login failed: wrong password for user %s", user.id)
         raise AuthError(BAD_CREDENTIALS)
+
     if not user.is_active:
         # Still the same message: a disabled account is not something to confirm
         # to whoever is typing at the login form.
         logger.info("login failed: account %s is disabled", user.id)
         raise AuthError(BAD_CREDENTIALS)
+
+    record_success(user)
     return user
 
 

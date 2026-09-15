@@ -19,17 +19,12 @@ def test_defaults_use_ollama_for_every_role() -> None:
     assert str(settings.ollama_base_url).startswith("http://127.0.0.1:11434")
 
 
-def test_reasoning_is_on_by_default_for_the_agent_only() -> None:
+def test_thinking_is_on_for_the_agent_and_off_everywhere_else() -> None:
+    """D-070: the agent needs thinking to call tools reliably; nothing else does."""
     settings = load()
     assert settings.agent.reasoning is True
-    for role in ModelRole:
-        if role is not ModelRole.AGENT:
-            assert settings.model_for(role).reasoning is False
-
-
-def test_overriding_the_agent_model_keeps_reasoning_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DESKPILOT_AGENT__MODEL", "qwen3:8b")
-    assert load().agent.reasoning is True
+    for role in (ModelRole.CLASSIFIER, ModelRole.GUARD, ModelRole.JUDGE):
+        assert settings.model_for(role).reasoning is False
 
 
 def test_model_for_returns_matching_role() -> None:
@@ -55,18 +50,15 @@ def test_partial_override_keeps_role_specific_defaults(monkeypatch: pytest.Monke
 
 
 def test_reasoning_can_be_enabled_for_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DESKPILOT_GUARD__REASONING", "true")
-    assert load().guard.reasoning is True
-
-
-def test_reasoning_can_be_disabled_for_the_agent(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DESKPILOT_AGENT__REASONING", "false")
-    assert load().agent.reasoning is False
+    monkeypatch.setenv("DESKPILOT_AGENT__REASONING", "true")
+    assert load().agent.reasoning is True
 
 
 def test_anthropic_role_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DESKPILOT_AGENT__PROVIDER", "anthropic")
     monkeypatch.setenv("DESKPILOT_AGENT__MODEL", "claude-sonnet-5")
+    # Thinking is on for the agent by default and is not supported for anthropic
+    # yet, so switching provider means turning it off too (D-070).
     monkeypatch.setenv("DESKPILOT_AGENT__REASONING", "false")
     with pytest.raises(ValidationError, match="DESKPILOT_ANTHROPIC_API_KEY"):
         load()
@@ -96,18 +88,6 @@ def test_anthropic_rejects_reasoning_for_now(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("DESKPILOT_AGENT__MODEL", "claude-sonnet-5")
     monkeypatch.setenv("DESKPILOT_AGENT__REASONING", "true")
     with pytest.raises(ValidationError, match="reasoning is not supported"):
-        load()
-
-
-def test_switching_the_agent_to_anthropic_needs_reasoning_off(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # The agent thinks by default (D-070), so a switch that sets only the provider
-    # and model is half-finished and must fail at startup, not at the first call.
-    monkeypatch.setenv("DESKPILOT_ANTHROPIC_API_KEY", "sk-ant-test")
-    monkeypatch.setenv("DESKPILOT_AGENT__PROVIDER", "anthropic")
-    monkeypatch.setenv("DESKPILOT_AGENT__MODEL", "claude-sonnet-5")
-    with pytest.raises(ValidationError, match="Set REASONING=false"):
         load()
 
 

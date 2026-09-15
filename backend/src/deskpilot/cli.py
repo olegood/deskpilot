@@ -460,8 +460,13 @@ def auth_login_command(
     async def body() -> Path:
         async with runtime() as rt:
             async with rt.sessions() as session:
-                issued = await log_in(session, email, password, rt.settings.auth)
-                await session.commit()
+                try:
+                    issued = await log_in(session, email, password, rt.settings.auth)
+                finally:
+                    # Committed even on failure: log_in records the failed attempt
+                    # on the user row, and rolling it back would mean the lockout
+                    # counter never advances.
+                    await session.commit()
             path = rt.settings.auth.session_file
             session_store.save(SavedSession.from_issued(issued), path)
             return path
@@ -521,7 +526,14 @@ def auth_check_command(
 
     async def body() -> User:
         async with runtime() as rt, rt.sessions() as session:
-            return await authenticate(session, email, password)
+            try:
+                user = await authenticate(session, email, password, rt.settings.auth)
+            finally:
+                # Committed even when it raised: authenticate records the failed
+                # attempt on the row, and rolling that back means the lockout
+                # counter never advances.
+                await session.commit()
+            return user
 
     user = run(body)
     typer.secho(f"OK: {user.email} ({user.role.value})", fg=typer.colors.GREEN)

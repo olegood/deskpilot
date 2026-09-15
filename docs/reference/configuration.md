@@ -38,7 +38,7 @@ Four roles are configured independently: `AGENT`, `CLASSIFIER`, `GUARD`, and `JU
 | `MAX_OUTPUT_TOKENS` | integer > 0 | Maximum tokens per response. |
 | `TIMEOUT_S` | number > 0 | HTTP timeout for one model call, in seconds. |
 | `NUM_CTX` | integer ≥ 2048 | Context window. Ollama only; see [silent truncation](../guides/ollama.md#things-that-bite). |
-| `REASONING` | `true` or `false` | Thinking mode. Always explicit, see [D-015](../decisions.md#d-015-thinking-mode-is-always-explicit-and-off-by-default); on for the agent, see [D-070](../decisions.md#d-070-thinking-is-on-for-the-agent-role). Not yet supported for `anthropic`. |
+| `REASONING` | `true` or `false` | Thinking mode. Always explicit, see [D-015](../decisions.md#d-015-thinking-mode-is-always-explicit-and-off-by-default). Not yet supported for `anthropic`. |
 
 ### Defaults per role
 
@@ -50,14 +50,10 @@ Four roles are configured independently: `AGENT`, `CLASSIFIER`, `GUARD`, and `JU
 | `MAX_OUTPUT_TOKENS` | 2048 | 64 | 256 | 1024 |
 | `TIMEOUT_S` | 120 | 30 | 30 | 300 |
 | `NUM_CTX` | 32768 | 32768 | 32768 | 32768 |
-| `REASONING` | `true` | `false` | `false` | `false` |
+| `REASONING` | `false` | `false` | `false` | `false` |
 
 The classifier's 64-token limit is deliberate: it answers with one word inside a
 JSON object, and a longer answer means it ignored the schema.
-
-The agent thinks because without it `qwen3.6:35b` often promises to look something
-up and then ends its turn without calling the tool. Thinking tokens count against
-`MAX_OUTPUT_TOKENS`.
 
 ### How fields map to providers
 
@@ -81,6 +77,9 @@ up and then ends its turn without calling the tool. Thinking tokens count agains
 | `DESKPILOT_AUTH__JWT_AUDIENCE` | `deskpilot-api` | `aud` claim, checked on decode, so a token minted for another service cannot be replayed here. |
 | `DESKPILOT_AUTH__ACCESS_TOKEN_MINUTES` | `15` | Access token lifetime. Short, because an individual access token cannot be revoked before it expires. |
 | `DESKPILOT_AUTH__REFRESH_TOKEN_DAYS` | `14` | Refresh token lifetime. Long only because it rotates on every use and reuse is detected. |
+| `DESKPILOT_AUTH__MAX_FAILED_LOGINS` | `5` | Consecutive failures before an account is locked. |
+| `DESKPILOT_AUTH__LOCKOUT_SECONDS` | `60` | First lockout. Doubles with each further failure. |
+| `DESKPILOT_AUTH__MAX_LOCKOUT_SECONDS` | `3600` | Cap on the doubling. |
 | `DESKPILOT_AUTH__SESSION_FILE` | `~/.deskpilot/session.json` | Where the CLI keeps its session. Written `0600` inside a `0700` directory. |
 | `DESKPILOT_AUTH__ALLOW_IMPERSONATION` | `false` | Lets `--as` act as any customer without logging in. An impersonation backdoor; on in local development only, and every use is logged. |
 
@@ -141,15 +140,12 @@ Separate from `backend/.env`, and read only by Docker Compose.
 
 ## Switching a role to Anthropic
 
-Set the API key, the provider, and the model together. The agent also needs
-thinking turned off, because it is on by default and not yet supported for
-Anthropic:
+Set the API key, the provider, and the model together:
 
 ```bash
 DESKPILOT_ANTHROPIC_API_KEY=sk-ant-...
 DESKPILOT_AGENT__PROVIDER=anthropic
 DESKPILOT_AGENT__MODEL=claude-sonnet-5
-DESKPILOT_AGENT__REASONING=false
 ```
 
 Startup fails with a clear error if the key is missing, if the provider is `anthropic` but the model isn't a Claude model, or if `REASONING` is `true`. That catches a half-finished switch before any LLM call.
