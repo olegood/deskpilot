@@ -27,11 +27,11 @@ by strangers is the actual work.
 
 ## Status
 
-**Milestones 1 to 3 of 14 complete.** The agent holds a multi-turn conversation
+**Milestones 1 to 4 of 14 complete.** The agent holds a multi-turn conversation
 about a customer's own orders, retrieves the shop's published policies from a vector
 index, labels each ticket, and is measured by a small eval suite. People log in with
-a real password and a real session, and a command acts as whoever is logged in.
-Everything runs on a local model.
+a real password and a real session, every tool asks an attribute-based policy engine
+before it answers, and every refusal is recorded. Everything runs on a local model.
 
 See the [roadmap](docs/roadmap.md) for what's next.
 

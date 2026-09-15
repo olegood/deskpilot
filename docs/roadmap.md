@@ -9,8 +9,8 @@ Each milestone ends with something runnable, tested, and documented.
 | 1 | Foundation: uv, config, model factory, Postgres, seeded shop, minimal ReAct graph | **Done** |
 | 2 | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | **Done** |
 | 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | **Done** |
-| 4 | ABAC: policy engine, audit log, principal injection into tools | In progress |
-| 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | Planned |
+| 4 | ABAC: policy engine, audit log, principal injection into tools | **Done** |
+| 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | Next |
 | 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Planned |
 | 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned |
 | 8 | Delegated OAuth: Connections page, PKCE flow, token vault | Planned |
@@ -51,7 +51,7 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **4.1 The principal and the policy engine.** Attributes on accounts, typed principals, actions and resources, deny-by-default rules in order, an exhaustive decision matrix, and `deskpilot auth grant / can`.
 - [x] **4.2 The audit log.** An `audit_log` table written in its own transaction, denials always recorded and consequential allows too, auth events alongside decisions, and `deskpilot audit tail`.
 - [x] **4.3 Principal injection.** `AgentContext` carries a `Principal`, every tool calls `guard`, and a cross-customer attempt is refused by the policy and recorded as evidence.
-- [ ] **4.4 Wrap-up.** Docs pass and a demo.
+- [x] **4.4 Wrap-up.** Administration commands authorized, a bootstrap exception for the first account, and a docs pass.
 
 ## Post-production backlog
 

@@ -66,6 +66,11 @@ class Trace(Resource):
 
 
 @dataclass(frozen=True)
+class AuditLog(Resource):
+    """The audit log itself. Reading it is an audited action."""
+
+
+@dataclass(frozen=True)
 class Account(Resource):
     """A user account, as the subject of administration."""
 

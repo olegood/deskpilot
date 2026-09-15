@@ -154,3 +154,110 @@ def test_logging_out_twice_is_not_an_error(cli: Path, accounts: None) -> None:
     invoke("auth", "logout")
 
     assert "Logged out" in invoke("auth", "logout")
+
+
+# ── administration is authorized, and bootstrapping is the one exception ─────
+
+
+def test_reading_the_audit_log_needs_an_administrator(cli: Path, accounts: None) -> None:
+    invoke("auth", "login", NOAH, stdin=f"{GOOD}\n")
+
+    assert "not allowed" in invoke("audit", "tail")
+
+
+def test_changing_attributes_needs_an_administrator(cli: Path, accounts: None) -> None:
+    invoke("auth", "login", NOAH, stdin=f"{GOOD}\n")
+
+    output = invoke("auth", "grant", REVIEWER, "--approval-limit", "999999")
+
+    assert "not allowed" in output
+
+
+def test_creating_a_staff_account_needs_an_administrator(cli: Path, accounts: None) -> None:
+    invoke("auth", "login", NOAH, stdin=f"{GOOD}\n")
+
+    # The password is prompted for before the check runs, so it has to be supplied
+    # even though the command will refuse.
+    output = invoke(
+        "auth",
+        "register",
+        "new@acmegear.example",
+        "--name",
+        "New",
+        "--role",
+        "admin",
+        stdin=f"{GOOD}\n{GOOD}\n",
+    )
+
+    assert "not allowed" in output
+
+
+def test_anybody_may_register_themselves_as_a_customer(cli: Path, accounts: None) -> None:
+    """Self-registration is how a shop works; it is not administration."""
+    output = invoke(
+        "auth", "register", "newcomer@example.com", "--name", "New Comer", stdin=f"{GOOD}\n{GOOD}\n"
+    )
+
+    assert "Created newcomer@example.com" in output
+
+
+def test_an_empty_installation_may_create_its_first_administrator(cli: Path) -> None:
+    """The bootstrap exception: the first administrator cannot be made by one.
+
+    Note there is no `accounts` fixture here, so the users table is empty.
+    """
+    output = invoke(
+        "auth",
+        "register",
+        "root@acmegear.example",
+        "--name",
+        "Root",
+        "--role",
+        "admin",
+        stdin=f"{GOOD}\n{GOOD}\n",
+    )
+
+    assert "Created root@acmegear.example as admin" in output
+
+
+def test_the_exception_closes_as_soon_as_one_account_exists(cli: Path, accounts: None) -> None:
+    """With accounts present, creating staff is administration and needs one."""
+    output = invoke(
+        "auth",
+        "register",
+        "second@acmegear.example",
+        "--name",
+        "Second",
+        "--role",
+        "admin",
+        stdin=f"{GOOD}\n{GOOD}\n",
+    )
+
+    # No longer the empty installation, and nobody is signed in to authorize it.
+    assert "not logged in" in output
+
+
+def test_an_administrator_may_do_all_of_it(cli: Path) -> None:
+    invoke(
+        "auth",
+        "register",
+        "root@acmegear.example",
+        "--name",
+        "Root",
+        "--role",
+        "admin",
+        stdin=f"{GOOD}\n{GOOD}\n",
+    )
+    invoke("auth", "login", "root@acmegear.example", stdin=f"{GOOD}\n")
+
+    assert "not allowed" not in invoke("audit", "tail")
+    assert "not allowed" not in invoke(
+        "auth",
+        "register",
+        "lena2@acmegear.example",
+        "--name",
+        "Lena",
+        "--role",
+        "reviewer",
+        stdin=f"{GOOD}\n{GOOD}\n",
+    )

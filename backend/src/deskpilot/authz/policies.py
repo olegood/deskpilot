@@ -159,10 +159,15 @@ def staff_edit_and_reject_within_their_regions(
 # ── administration ──────────────────────────────────────────────────────────
 
 
-def admins_manage_accounts_and_read_traces(
+def admins_manage_accounts_and_read_the_record(
     principal: Principal, action: Action, resource: Resource
 ) -> Decision | None:
-    if action not in {Action.USER_MANAGE, Action.TRACE_VIEW}:
+    """Reading the audit log is itself audited, which is the point of it.
+
+    Somebody who can read the record of what everyone did should leave a record of
+    having read it.
+    """
+    if action not in {Action.USER_MANAGE, Action.TRACE_VIEW, Action.AUDIT_VIEW}:
         return None
     if principal.role is UserRole.ADMIN:
         return allow("administrator")
@@ -178,5 +183,5 @@ RULES: tuple[Rule, ...] = (
     staff_read_tickets_in_their_regions,
     a_reviewer_approves_within_their_limit,
     staff_edit_and_reject_within_their_regions,
-    admins_manage_accounts_and_read_traces,
+    admins_manage_accounts_and_read_the_record,
 )

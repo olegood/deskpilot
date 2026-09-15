@@ -2,7 +2,7 @@
 
 Measuring whether a change to the agent made it better or worse.
 
-> Last verified against: milestone 3 (complete).
+> Last verified against: milestone 4 (complete).
 
 ## What is measured, and what is not
 

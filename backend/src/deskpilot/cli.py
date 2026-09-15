@@ -29,11 +29,18 @@ from deskpilot.auth.sessions import (
     refresh,
 )
 from deskpilot.auth.tokens import TokenError
-from deskpilot.auth.users import AuthError, authenticate, create_user, get_user, set_password
+from deskpilot.auth.users import (
+    AuthError,
+    authenticate,
+    count_users,
+    create_user,
+    get_user,
+    set_password,
+)
 from deskpilot.authz import resources
 from deskpilot.authz.actions import Action, AuditEvent
-from deskpilot.authz.audit import recent, record_event
-from deskpilot.authz.engine import Decision, decide
+from deskpilot.authz.audit import guard, recent, record_event
+from deskpilot.authz.engine import Decision, Forbidden, decide
 from deskpilot.authz.principal import Principal
 from deskpilot.authz.resources import Resource
 from deskpilot.config import Settings, get_settings
@@ -128,6 +135,7 @@ async def runtime() -> AsyncIterator[Runtime]:
 # a traceback. One tuple, so the two runners cannot drift apart.
 EXPECTED_ERRORS = (
     AuthError,
+    Forbidden,
     DatasetError,
     PolicyIndexError,
     SeedError,
@@ -388,6 +396,18 @@ def policy_search_command(
         typer.secho(f"        {passage.content.splitlines()[-1][:100]}", dim=True)
 
 
+async def signed_in_principal(rt: Runtime) -> Principal:
+    """The principal of whoever is logged in, whatever their role.
+
+    Separate from current_principal, which insists on a customer record because a
+    ticket has to belong to somebody. Administration does not.
+    """
+    saved = await active_session(rt)
+    async with rt.sessions() as session:
+        user = await authenticate_access_token(session, saved.access_token, rt.settings.auth)
+        return Principal.from_user(user)
+
+
 async def current_principal(rt: Runtime, requested: str | None) -> Principal:
     """Decide who this command acts as, with the attributes a policy weighs.
 
@@ -459,6 +479,7 @@ def auth_register_command(
 
     async def body() -> User:
         async with runtime() as rt, rt.sessions() as session:
+            await check_may_create(rt, session, role)
             user = await create_user(
                 session,
                 email,
@@ -588,9 +609,11 @@ def auth_grant_command(
 
     async def body() -> User:
         async with runtime() as rt, rt.sessions() as session:
+            actor = await signed_in_principal(rt)
             user = await get_user(session, email)
             if user is None:
                 raise AuthError(f"no account for {email}")
+            await guard(rt.sessions, actor, Action.USER_MANAGE, resources.Account(user_id=user.id))
             if region is not None:
                 user.regions = [item.value for item in region]
             if limit is not None:
@@ -733,6 +756,14 @@ def audit_tail_command(
     """Show the most recent audit entries, newest first."""
 
     async def body() -> list[AuditEntry]:
+        async with runtime() as rt:
+            # Reading the record of what everyone did leaves a record of its own.
+            await guard(
+                rt.sessions,
+                await signed_in_principal(rt),
+                Action.AUDIT_VIEW,
+                resources.AuditLog(),
+            )
         async with runtime() as rt, rt.sessions() as session:
             actor_id = None
             if email is not None:
@@ -757,6 +788,33 @@ def audit_tail_command(
         if entry.rule:
             detail += f"  [{entry.rule}]"
         typer.secho(detail, dim=True)
+
+
+async def check_may_create(rt: Runtime, session: AsyncSession, role: UserRole) -> None:
+    """Who may create which kind of account.
+
+    Anybody may register themselves as a customer, as on any shop. Creating a
+    member of staff is administration and needs an administrator.
+
+    That leaves the bootstrap problem: the first administrator cannot be created by
+    an administrator. An empty installation is therefore allowed to create one
+    account of any role, and the event is recorded as such. It is the narrowest
+    exception that still lets the system be set up, and it closes the moment the
+    first account exists.
+    """
+    if role is UserRole.CUSTOMER:
+        return
+    if await count_users(session) == 0:
+        logger.warning("creating the first account on an empty installation")
+        await record_event(
+            rt.sessions,
+            AuditEvent.ACCOUNT_CREATED,
+            f"bootstrap: first account created as {role.value} on an empty installation",
+        )
+        return
+    await guard(
+        rt.sessions, await signed_in_principal(rt), Action.USER_MANAGE, resources.Account(user_id=0)
+    )
 
 
 # ── eval ────────────────────────────────────────────────────────────────────

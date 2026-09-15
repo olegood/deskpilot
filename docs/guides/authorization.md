@@ -2,7 +2,7 @@
 
 Deciding what somebody is allowed to do.
 
-> Last verified against: milestone 4, step 4.3.
+> Last verified against: milestone 4 (complete).
 
 Who somebody is is a separate question, answered by the
 [authentication guide](auth.md). This is about what happens next.
@@ -61,7 +61,7 @@ first match wins and **the order is part of the policy**.
 | 5 | `staff_read_tickets_in_their_regions` | Region scoping |
 | 6 | `a_reviewer_approves_within_their_limit` | The money rule |
 | 7 | `staff_edit_and_reject_within_their_regions` | Rejecting is free; editing is not |
-| 8 | `admins_manage_accounts_and_read_traces` | Administration |
+| 8 | `admins_manage_accounts_and_read_the_record` | Administration and the audit log |
 
 Denials come first deliberately. A rule stopping somebody approving a refund on
 their own ticket is worthless if a later rule can allow it because their limit is
@@ -234,6 +234,47 @@ cannot express or a judgement per row that does not scale. It has a useful side
 effect: staff, who own no customer record, are refused before any query runs rather
 than shown somebody else's list
 ([D-090](../decisions.md#d-090-a-list-is-authorized-by-scope-not-row-by-row)).
+
+## Administration
+
+Three commands are administrator-only, and each refusal is recorded:
+
+```bash
+uv run deskpilot audit tail          # audit.view
+uv run deskpilot auth grant ...      # user.manage
+uv run deskpilot auth register --role reviewer ...   # user.manage
+```
+
+Registering yourself as a **customer** is open to anyone, as on any shop. Creating a
+member of **staff** is administration.
+
+Reading the audit log is itself audited. Somebody who can read the record of what
+everyone did should leave a record of having read it
+([D-093](../decisions.md#d-093-reading-the-audit-log-is-itself-audited)). It is a
+separate action from `trace.view` even though the same people read both today: a
+trace is debugging material, an audit entry is evidence.
+
+### The bootstrap problem
+
+The first administrator cannot be created by an administrator. An empty `users`
+table is therefore allowed to create **one** account of any role, recorded as a
+bootstrap event:
+
+```bash
+uv run deskpilot auth register root@acmegear.example --name "Root" --role admin
+```
+
+The exception closes the moment the first account exists, which a test asserts. The
+alternatives are worse: a seeded default admin is a known account in a public
+repository, a separate privileged command is the same exception wearing a hat, and
+an environment variable that disables the check is a switch somebody leaves on
+([D-094](../decisions.md#d-094-an-empty-installation-may-create-one-account-of-any-role)).
+
+One wart worth knowing: `auth register` prompts for the password **before** checking
+whether you may create the account, because that is where typer prompts. Nothing
+leaks — the refusal is identical either way — but you are asked to type a password
+for an account you will then be refused
+([D-095](../decisions.md#d-095-a-password-is-prompted-for-before-authorization-is-checked)).
 
 ## Principals without a login
 

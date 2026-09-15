@@ -24,6 +24,10 @@ class Action(StrEnum):
 
     # Administration.
     TRACE_VIEW = "trace.view"
+    # Separate from trace.view on purpose: a trace is debugging material that can be
+    # sampled or thrown away, an audit entry is evidence. They deserve separate
+    # answers even if the same people happen to read both today.
+    AUDIT_VIEW = "audit.view"
     USER_MANAGE = "user.manage"
 
 
@@ -40,6 +44,7 @@ ALWAYS_AUDITED = frozenset(
         Action.PROPOSAL_REJECT,
         Action.TICKET_VIEW_ANY,
         Action.TRACE_VIEW,
+        Action.AUDIT_VIEW,
         Action.USER_MANAGE,
     }
 )

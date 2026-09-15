@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -48,6 +48,11 @@ class AuthError(Exception):
 def normalise_email(email: str) -> str:
     """Lower-cased and stripped, so one person cannot end up with two accounts."""
     return email.strip().lower()
+
+
+async def count_users(session: AsyncSession) -> int:
+    """How many accounts exist. Used to recognise a first-run installation."""
+    return await session.scalar(select(func.count()).select_from(User)) or 0
 
 
 async def create_user(

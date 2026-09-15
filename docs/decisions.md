@@ -1007,3 +1007,39 @@ visible instead of hiding it.
 **Decision.** It raises a `ValueError` naming `selectinload(User.customer)` when the relationship is unloaded, rather than letting `lazy="raise"` fire.
 
 **Why.** A customer's home region is one of the attributes a policy weighs, so the relationship is genuinely required. Left to `lazy="raise"`, the failure surfaces deep inside an unrelated call with a message that does not say what to do. Checking it at the boundary turns it into one sentence with the fix in it.
+
+---
+
+### D-093: Reading the audit log is itself audited
+
+**Date:** 2026-09-15
+
+**Decision.** `audit.view` is its own action, restricted to administrators, and listed in `ALWAYS_AUDITED`.
+
+**Why.** Somebody who can read the record of what everyone did should leave a record of having read it. Until this step `audit tail` was the one command with no authorization at all, which is an odd gap in a milestone about authorization.
+
+**Consequences.** It is deliberately separate from `trace.view`, even though the same people read both today. A trace is debugging material that can be sampled or thrown away; an audit entry is evidence. They deserve separate answers.
+
+---
+
+### D-094: An empty installation may create one account of any role
+
+**Date:** 2026-09-15
+
+**Decision.** Anybody may register themselves as a customer. Creating a member of staff needs `user.manage`, which only an administrator has — except when the `users` table is empty, where one account of any role is allowed and the event is recorded as a bootstrap.
+
+**Why.** The bootstrap problem: the first administrator cannot be created by an administrator. The alternatives are worse. A seeded default admin means a known account in a public repository. A separate privileged command is the same exception wearing a hat. An environment variable that disables the check is a switch somebody leaves on.
+
+**Consequences.** The exception is the narrowest one that still lets the system be set up, and it closes the moment the first account exists — which a test asserts. The bootstrap is written to the audit log, so the first thing the record ever says is how the first account came to exist.
+
+---
+
+### D-095: A password is prompted for before authorization is checked
+
+**Date:** 2026-09-15
+
+**Decision.** `auth register` asks for the new account's password, then checks whether the caller may create it.
+
+**Why.** Not a decision so much as a consequence of where typer prompts. It is recorded because it is visible: somebody who may not create a staff account is asked to type a password first, then refused. Nothing is leaked - the refusal is the same either way - but it is poor manners, and it is worth knowing the order is that way round rather than assuming the check comes first.
+
+**Consequences.** Worth revisiting when the web API arrives, where the check happens before any input is collected.

@@ -277,7 +277,7 @@ def test_editing_above_the_limit_is_refused() -> None:
 # ── administration ──────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("action", [Action.USER_MANAGE, Action.TRACE_VIEW])
+@pytest.mark.parametrize("action", [Action.USER_MANAGE, Action.TRACE_VIEW, Action.AUDIT_VIEW])
 def test_only_an_admin_administers(action: Action) -> None:
     assert decide(admin(), action, resources.Account(user_id=1)).allowed
     assert not decide(reviewer(), action, resources.Account(user_id=1)).allowed
@@ -320,6 +320,7 @@ def test_every_rule_is_reachable() -> None:
         (reviewer(), Action.REFUND_APPROVE, proposal()),
         (reviewer(), Action.PROPOSAL_REJECT, proposal()),
         (admin(), Action.USER_MANAGE, resources.Account(user_id=1)),
+        (admin(), Action.AUDIT_VIEW, resources.AuditLog()),
         (customer(is_active=False), Action.ORDER_VIEW, order()),
         (
             reviewer(customer_id=NOAH_CUSTOMER_ID),
