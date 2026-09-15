@@ -24,7 +24,7 @@ from deskpilot.evals.scoring import CaseResult, Summary, crashed, score, summari
 from deskpilot.graph.agent import build_agent_graph
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.runner import run_turn
-from deskpilot.llm import build_chat_model
+from deskpilot.llm import build_chat_model, build_embeddings
 from deskpilot.tools import ALL_TOOLS
 
 RUNS_DIR = DATASETS_DIR / "runs"
@@ -67,6 +67,7 @@ async def run_case(
     context = AgentContext(
         customer_email=case.customer,
         session_factory=sessions,
+        embeddings=build_embeddings(settings),
         policy_search=settings.policy_search,
         tools=settings.tools,
     )
