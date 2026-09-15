@@ -1043,3 +1043,59 @@ visible instead of hiding it.
 **Why.** Not a decision so much as a consequence of where typer prompts. It is recorded because it is visible: somebody who may not create a staff account is asked to type a password first, then refused. Nothing is leaked - the refusal is the same either way - but it is poor manners, and it is worth knowing the order is that way round rather than assuming the check comes first.
 
 **Consequences.** Worth revisiting when the web API arrives, where the check happens before any input is collected.
+
+---
+
+### D-096: The access token goes in the body, the refresh token in an httpOnly cookie
+
+**Date:** 2026-09-15
+
+**Decision.** `/api/auth/login` returns the access token as JSON, for the SPA to hold in memory. The refresh token is set as an httpOnly, SameSite=strict cookie scoped to `/api/auth`, and never appears in a response body.
+
+**Why.** The two have different lifetimes and different threats. An XSS bug can read anything the page can reach, so the thing it can reach should expire in fifteen minutes. The thing that lasts a fortnight goes somewhere script cannot look. Putting both in `localStorage` is the common shortcut and hands an attacker a fortnight; putting both in cookies means every request carries the long-lived one.
+
+**Consequences.** The SPA loses its access token on refresh of the page and has to call `/refresh` on load. That is the cost, and it is small.
+
+---
+
+### D-097: The refresh endpoint checks a double-submit token
+
+**Date:** 2026-09-15
+
+**Decision.** `/api/auth/refresh` requires an `X-CSRF-Token` header matching a readable `deskpilot_csrf` cookie. Nothing else does.
+
+**Why.** It is the only endpoint authenticated by a cookie, so it is the only one a browser could be tricked into calling from another site. `SameSite=strict` already prevents that in every browser that honours it; the double submit is a second lock on the same door and costs one header. Every other endpoint is authenticated by a header the browser will not attach on its own, so CSRF does not apply to them and adding a check would be ritual.
+
+**Consequences.** Logout deliberately has no check. Being signed out against your will is an annoyance, not a compromise.
+
+---
+
+### D-098: Rate limiting by source address, in memory, and honest about it
+
+**Date:** 2026-09-15
+
+**Decision.** A fixed window of failed logins per client address, held in process memory.
+
+**Why.** Account lockout ([D-071](#d-071-account-lockout-with-exponential-backoff-and-why-that-is-a-trade)) stops somebody guessing one password. It cannot stop one password tried against a thousand accounts, because that never trips any single account's counter. This is the counter that catches it, and the HTTP layer is the first place with an address to count against.
+
+**Consequences.** Per process, and forgotten on restart. A shared store is the real answer and belongs where there is more than one process to share it. The client address is `request.client.host` and deliberately not `X-Forwarded-For`: taking that header unconditionally would let anybody choose their own identity and skip the limit entirely. Trusting it is a deployment decision, made where the proxy is.
+
+---
+
+### D-099: One place turns exceptions into responses
+
+**Date:** 2026-09-15
+
+**Decision.** Exception handlers are registered once on the app. `Forbidden` becomes 403 with the flat refusal, `AuthError` and `TokenError` become 401 with their own already-vague messages, and anything unhandled becomes 500 with "Something went wrong."
+
+**Why.** The services are careful about what they say; a route that formats its own error can undo that in one line. Registering the mapping once means a new route inherits it. The 500 handler matters most: an exception message is written for a developer and routinely contains hostnames and table names, so it is logged in full and reported as nothing.
+
+---
+
+### D-100: The interactive docs are not served
+
+**Date:** 2026-09-15
+
+**Decision.** `docs_url` and `redoc_url` are `None`. The OpenAPI schema is still generated, for the frontend's typed client.
+
+**Why.** A browsable explorer of every endpoint, with a form for each, is a target rather than a feature. The schema is what the project actually needs, and it can be written to a file at build time without serving anything.

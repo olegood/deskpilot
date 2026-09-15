@@ -10,7 +10,7 @@ Each milestone ends with something runnable, tested, and documented.
 | 2 | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | **Done** |
 | 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | **Done** |
 | 4 | ABAC: policy engine, audit log, principal injection into tools | **Done** |
-| 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | Next |
+| 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | In progress |
 | 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Planned |
 | 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned |
 | 8 | Delegated OAuth: Connections page, PKCE flow, token vault | Planned |
@@ -52,6 +52,14 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **4.2 The audit log.** An `audit_log` table written in its own transaction, denials always recorded and consequential allows too, auth events alongside decisions, and `deskpilot audit tail`.
 - [x] **4.3 Principal injection.** `AgentContext` carries a `Principal`, every tool calls `guard`, and a cross-customer attempt is refused by the policy and recorded as evidence.
 - [x] **4.4 Wrap-up.** Administration commands authorized, a bootstrap exception for the first account, and a docs pass.
+
+## Milestone 5: the web API and the frontend shell
+
+- [x] **5.1 The API and authentication over HTTP.** A FastAPI app, security headers, CORS, one error shape, the access token in the body and the refresh token in an httpOnly cookie, CSRF on refresh, rate limiting by source address, and `deskpilot serve`.
+- [ ] **5.2 Ticket endpoints.** Creating, replying, listing and reading, authorized per request.
+- [ ] **5.3 Streaming.** Agent progress over SSE, with the token in a header.
+- [ ] **5.4 The React shell.** Vite, a generated typed client, login and the customer portal.
+- [ ] **5.5 Wrap-up.** Docs pass and a demo.
 
 ## Post-production backlog
 

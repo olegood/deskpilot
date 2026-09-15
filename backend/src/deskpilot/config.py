@@ -148,6 +148,25 @@ class AuthSettings(BaseModel):
     allow_impersonation: bool = False
 
 
+class ApiSettings(BaseModel):
+    """The HTTP layer."""
+
+    model_config = ConfigDict(frozen=True)
+
+    host: str = "127.0.0.1"
+    port: int = Field(default=8000, gt=0, lt=65_536)
+    # Where the SPA is served from. Only this origin may call the API from a
+    # browser, and credentials are only shared with it.
+    frontend_origin: str = "http://localhost:5173"
+    # Set Secure on cookies. False for local http development, true everywhere else.
+    secure_cookies: bool = False
+    # Failed logins allowed from one address per window, whichever accounts they
+    # target. This is the limit account lockout could not provide, because until
+    # now there was no address to count against (D-071).
+    login_attempts_per_ip: int = Field(default=20, gt=0)
+    login_window_seconds: int = Field(default=300, gt=0)
+
+
 class ToolSettings(BaseModel):
     """Limits that protect the context window from a tool's own output.
 
@@ -247,6 +266,7 @@ class Settings(BaseSettings):
         timeout_s=300.0,
     )
     embeddings: EmbeddingSettings = EmbeddingSettings()
+    api: ApiSettings = ApiSettings()
     auth: AuthSettings = AuthSettings()
     tools: ToolSettings = ToolSettings()
     policy_search: PolicySearchSettings = PolicySearchSettings()

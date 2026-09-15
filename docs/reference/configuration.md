@@ -66,6 +66,17 @@ JSON object, and a longer answer means it ignored the schema.
 | `NUM_CTX` | `num_ctx` | ignored |
 | `REASONING` | `reasoning` (sent as `think`) | rejected when `true` |
 
+## HTTP API
+
+| Variable | Default | Description |
+|---|---|---|
+| `DESKPILOT_API__HOST` | `127.0.0.1` | Bind address. Loopback by default. |
+| `DESKPILOT_API__PORT` | `8000` | Bind port. |
+| `DESKPILOT_API__FRONTEND_ORIGIN` | `http://localhost:5173` | The one origin allowed to call the API from a browser. |
+| `DESKPILOT_API__SECURE_COOKIES` | `false` | Set `Secure` on cookies. False for local http; true everywhere else. |
+| `DESKPILOT_API__LOGIN_ATTEMPTS_PER_IP` | `20` | Failed logins allowed from one address per window, whichever accounts they target. |
+| `DESKPILOT_API__LOGIN_WINDOW_SECONDS` | `300` | Length of that window. |
+
 ## Authentication
 
 | Variable | Default | Description |

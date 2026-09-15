@@ -118,6 +118,7 @@ SQLAlchemy, Alembic, pytest, Ollama, React and TypeScript.
 - [Agent guide](docs/guides/agent.md) — the graph, tools, and identity
 - [Evals guide](docs/guides/evals.md) — how behaviour is measured
 - [Authentication guide](docs/guides/auth.md) — accounts, passwords, tokens, sessions
+- [API guide](docs/guides/api.md) — the HTTP layer
 - [Architecture overview](docs/architecture/overview.md) — the whole system
 - [Decision log](docs/decisions.md) — why it's built this way
 - [All documentation](docs/README.md)

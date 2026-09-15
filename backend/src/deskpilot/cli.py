@@ -742,6 +742,24 @@ def auth_passwd_command(
     typer.secho("Password changed. Existing sessions have been revoked.", fg=typer.colors.GREEN)
 
 
+@app.command("serve")
+def serve_command(
+    reload: Annotated[bool, typer.Option("--reload", help="Restart on code changes.")] = False,
+) -> None:
+    """Run the HTTP API."""
+    import uvicorn
+
+    api = get_settings().api
+    typer.secho(f"Serving on http://{api.host}:{api.port}", fg=typer.colors.GREEN)
+    uvicorn.run(
+        "deskpilot.api.app:create_app",
+        factory=True,
+        host=api.host,
+        port=api.port,
+        reload=reload,
+    )
+
+
 # ── audit ───────────────────────────────────────────────────────────────────
 
 
