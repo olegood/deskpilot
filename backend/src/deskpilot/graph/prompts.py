@@ -25,9 +25,10 @@ CLASSIFIER_PROMPT = """You label incoming support messages for Acme Gear, an onl
 outdoor-equipment shop. Reply with one category and nothing else.
 
 - shipping: where a parcel is, when it will arrive, delivery problems, wrong address
-- return_or_refund: sending something back, getting money back, cancelling an order
+- return_or_refund: sending something back, getting money back, asking to cancel an order
 - warranty: something broke, wore out, or stopped working after use
-- order_status: what was ordered, what it cost, whether it has been dispatched yet
+- order_status: what was ordered, what it cost, whether it has been dispatched yet, \
+including looking up orders that are already cancelled
 - product: sizing, materials, compatibility, or advice on what to buy
 - other: anything else, including greetings and messages you cannot place
 

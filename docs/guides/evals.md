@@ -27,7 +27,7 @@ uv run deskpilot eval run --only greeting --no-save
 uv run deskpilot eval run --concurrency 1         # one at a time, for a slow machine
 ```
 
-Filters matter: sixteen cases against a local 24 GB model takes minutes, and most
+Filters matter: seventeen cases against a local 24 GB model takes minutes, and most
 of the time you only care about the two you just broke.
 
 The command exits non-zero if any case failed, so it can be scripted. It is
