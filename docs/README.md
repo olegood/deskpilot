@@ -17,6 +17,8 @@
 | [API guide](guides/api.md) | The HTTP layer: tokens, cookies, CSRF, rate limiting, errors |
 | [Evals guide](guides/evals.md) | The dataset, how cases are scored, and how to run the suite |
 | [Authentication guide](guides/auth.md) | Accounts, passwords, and how a login is checked |
+| [Authorization guide](guides/authorization.md) | Attributes, rules, and how a decision is made |
+| [API guide](guides/api.md) | The HTTP layer: tokens, cookies, CSRF, rate limiting, errors |
 | [Configuration reference](reference/configuration.md) | Every setting and environment variable |
 
 ## Where to start

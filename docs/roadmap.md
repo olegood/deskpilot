@@ -56,7 +56,7 @@ Each milestone ends with something runnable, tested, and documented.
 ## Milestone 5: the web API and the frontend shell
 
 - [x] **5.1 The API and authentication over HTTP.** A FastAPI app, security headers, CORS, one error shape, the access token in the body and the refresh token in an httpOnly cookie, CSRF on refresh, rate limiting by source address, and `deskpilot serve`.
-- [ ] **5.2 Ticket endpoints.** Creating, replying, listing and reading, authorized per request.
+- [x] **5.2 Ticket endpoints.** Opening, replying, listing and reading, each asking the same policy engine the tools ask, with the agent graph built once for the process.
 - [ ] **5.3 Streaming.** Agent progress over SSE, with the token in a header.
 - [ ] **5.4 The React shell.** Vite, a generated typed client, login and the customer portal.
 - [ ] **5.5 Wrap-up.** Docs pass and a demo.

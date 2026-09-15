@@ -59,6 +59,7 @@ from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.evals.dataset import DatasetError, load_cases
 from deskpilot.evals.runner import Report, run_suite, select, write_report
 from deskpilot.graph.context import AgentContext
+from deskpilot.graph.conversation import load_messages
 from deskpilot.graph.runner import AgentRun, run_agent
 from deskpilot.knowledge.index import DocumentState, PolicyIndexError, build_index, index_status
 from deskpilot.knowledge.search import PolicyPassage, search_policy_index
@@ -949,13 +950,5 @@ async def respond(rt: Runtime, ticket: Ticket, principal: Principal, message: st
 
 
 async def load_conversation(rt: Runtime, ticket: Ticket) -> list[AnyMessage]:
-    """Read a ticket's messages straight out of its latest checkpoint.
-
-    No model and no graph: this only reads state, so it costs nothing and works even
-    when Ollama is not running.
-    """
-    saved = await rt.checkpointer.aget_tuple({"configurable": {"thread_id": ticket.thread_id}})
-    if saved is None:
-        return []
-    messages = saved.checkpoint["channel_values"].get("messages", [])
-    return list(messages)
+    """Read a ticket's messages straight out of its latest checkpoint."""
+    return await load_messages(rt.checkpointer, ticket.thread_id)

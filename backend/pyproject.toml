@@ -43,7 +43,7 @@ markers = [
     "slow: takes seconds rather than milliseconds; deselect with -m 'not slow'",
 ]
 # Integration tests are skipped by default. Run them with: uv run pytest -m integration
-addopts = "-ra --strict-markers --import-mode=importlib -m 'not integration' -v"
+addopts = "-ra --strict-markers --import-mode=importlib -m 'not integration'"
 
 [tool.ruff]
 line-length = 100

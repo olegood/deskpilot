@@ -10,9 +10,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from deskpilot.api import errors, security
-from deskpilot.api.routers import auth
-from deskpilot.config import Settings, get_settings
+from deskpilot.api.routers import auth, tickets
+from deskpilot.config import ModelRole, Settings, get_settings
+from deskpilot.db.checkpointer import open_checkpointer
 from deskpilot.db.session import create_engine, create_session_factory
+from deskpilot.graph.agent import build_agent_graph
+from deskpilot.llm import build_chat_model
+from deskpilot.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +36,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.login_limiter = security.LoginRateLimiter(
             settings.api.login_attempts_per_ip, settings.api.login_window_seconds
         )
-        logger.info("deskpilot api ready")
         try:
-            yield
+            # One checkpointer and one graph for the process. Building a graph per
+            # request would rebuild the model client and its connection pool every
+            # time; run_turn exists precisely so the graph can be shared.
+            async with open_checkpointer(settings.database) as checkpointer:
+                app.state.checkpointer = checkpointer
+                app.state.agent = build_agent_graph(
+                    model=build_chat_model(ModelRole.AGENT, settings),
+                    tools=ALL_TOOLS,
+                    max_steps=settings.max_agent_steps,
+                    checkpointer=checkpointer,
+                    classifier=build_chat_model(ModelRole.CLASSIFIER, settings),
+                )
+                logger.info("deskpilot api ready")
+                yield
         finally:
             await engine.dispose()
 
@@ -60,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     errors.install(app)
     app.include_router(auth.router)
+    app.include_router(tickets.router)
 
     @app.get("/api/health", tags=["meta"])
     async def health() -> dict[str, str]:

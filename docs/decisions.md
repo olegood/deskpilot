@@ -1099,3 +1099,47 @@ visible instead of hiding it.
 **Decision.** `docs_url` and `redoc_url` are `None`. The OpenAPI schema is still generated, for the frontend's typed client.
 
 **Why.** A browsable explorer of every endpoint, with a form for each, is a target rather than a feature. The schema is what the project actually needs, and it can be written to a file at build time without serving anything.
+
+---
+
+### D-101: The graph is built once for the process
+
+**Date:** 2026-09-15
+
+**Decision.** The checkpointer and the compiled agent graph are created in the app's lifespan and shared by every request.
+
+**Why.** Building a graph per request would rebuild the model client and its connection pool every time. `run_turn` was split out from `run_agent` in milestone 2 exactly so a long-lived caller could build once and run many turns; this is the caller it was split out for.
+
+**Consequences.** The lifespan has to run for the state to exist, which `ASGITransport` does not do on its own. Tests enter `app.router.lifespan_context` themselves.
+
+---
+
+### D-102: A dependency must not refuse on its own
+
+**Date:** 2026-09-15
+
+**Decision.** There is no dependency that rejects a principal without a customer record. Endpoints build a resource whose owner is an id nothing owns, and let `guard` refuse.
+
+**Why.** Found by a test. The first version raised `Forbidden` from a dependency, which returned the right status and left no audit entry at all — a refusal with no trace, in a project whose whole argument is that refusals are recorded. Routing every refusal through `guard` means one path, one record, and one definition of who may do what.
+
+**Consequences.** A staff account asking for its own tickets is denied by whichever rule reaches it first, which may be the region rule rather than the default. That is the policy's business, and the API test asserts only that the question reached the engine and left a trace.
+
+---
+
+### D-103: Another customer's ticket is 404, not 403
+
+**Date:** 2026-09-15
+
+**Decision.** Reading or replying to a ticket that belongs to somebody else returns 404 with "no ticket was found for this customer".
+
+**Why.** The same reason `get_order` answers identically for "does not exist" and "not yours" ([D-021](#d-021-not-found-and-not-yours-give-the-same-answer)). A 403 would confirm the reference exists, turning the endpoint into an oracle for valid ticket references. The audit log still records which of the two actually happened.
+
+---
+
+### D-104: The conversation the API returns leaves out the agent's working
+
+**Date:** 2026-09-15
+
+**Decision.** `GET /api/tickets/{reference}` returns customer and agent turns only. Tool calls and their results are available to the CLI and not over HTTP.
+
+**Why.** Two reasons, and the second is the serious one. Tool calls are the agent's working rather than the conversation, so a customer has no use for them. And a tool result is raw text from a database row or a policy document that nothing has sanitised, heading for a browser. The security milestone is where rendering untrusted text is dealt with properly; until then it does not leave the server.

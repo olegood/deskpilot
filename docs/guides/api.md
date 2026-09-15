@@ -2,7 +2,7 @@
 
 The HTTP layer.
 
-> Last verified against: milestone 5, step 5.1.
+> Last verified against: milestone 5, step 5.2.
 
 Everything here is a thin shell over services that already exist and are already
 tested. A route reads the request, calls a service, and shapes the response; the
@@ -29,6 +29,10 @@ every endpoint with a form for each is a target rather than a feature
 | `POST` | `/api/auth/refresh` | refresh cookie + CSRF header | a new access token, rotates the cookie |
 | `POST` | `/api/auth/logout` | refresh cookie | 204 |
 | `GET` | `/api/auth/me` | `Authorization: Bearer` | who you are |
+| `POST` | `/api/tickets` | bearer token | opens a ticket, returns the agent's first answer |
+| `GET` | `/api/tickets` | bearer token | your tickets, newest first |
+| `GET` | `/api/tickets/{reference}` | bearer token | one ticket and its conversation |
+| `POST` | `/api/tickets/{reference}/replies` | bearer token | adds a message, returns the answer |
 
 Health says nothing about the database on purpose. An endpoint that reports which
 dependency is down tells an attacker which dependency to attack.
@@ -87,6 +91,48 @@ Two limitations, stated rather than hidden:
   limit. Trusting a proxy is a deployment decision, made where the proxy is.
 
 A successful login clears the address, so one person's bad evening does not linger.
+
+## Tickets
+
+Every endpoint asks the same `guard` the tools ask, on the same rules. One
+definition of who may read a ticket, rather than one per entry point.
+
+```bash
+TOKEN=$(curl -s -X POST localhost:8000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"noah.kim@example.com","password":"..."}' | jq -r .access_token)
+
+curl -s -X POST localhost:8000/api/tickets -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"subject":"Where is my order","message":"Where is ORD-1042?"}' | jq
+```
+
+The agent runs **synchronously**, so opening a ticket takes as long as the model
+does. Step 5.3 streams the turn as it happens, using the same call underneath.
+
+Three things worth knowing:
+
+**Another customer's ticket is 404, not 403.** A 403 would confirm the reference
+exists, turning the endpoint into an oracle for valid references. The audit log
+still records which of the two really happened
+([D-103](../decisions.md#d-103-another-customers-ticket-is-404-not-403)).
+
+**No dependency refuses on its own.** An endpoint builds a resource whose owner is
+an id nothing owns and lets `guard` refuse. The first version raised from a
+dependency: right status, no audit entry — a refusal with no trace, in a project
+whose whole argument is that refusals are recorded
+([D-102](../decisions.md#d-102-a-dependency-must-not-refuse-on-its-own)).
+
+**The conversation leaves out the agent's working.** Tool calls and their results
+are not returned. They are the agent's working rather than the conversation, and a
+tool result is raw text from a database row heading for a browser that nothing has
+sanitised. Rendering untrusted text is dealt with properly in the security
+milestone; until then it does not leave the server
+([D-104](../decisions.md#d-104-the-conversation-the-api-returns-leaves-out-the-agents-working)).
+
+The checkpointer and the compiled graph are built once in the app's lifespan and
+shared. `run_turn` was split out from `run_agent` back in milestone 2 for exactly
+this caller ([D-101](../decisions.md#d-101-the-graph-is-built-once-for-the-process)).
 
 ## Errors
 

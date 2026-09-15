@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, Request
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deskpilot.auth.sessions import authenticate_access_token
@@ -13,6 +14,7 @@ from deskpilot.auth.tokens import TokenError
 from deskpilot.authz.principal import Principal
 from deskpilot.config import Settings
 from deskpilot.db.models import User
+from deskpilot.graph.runner import AgentGraph
 
 
 def settings_of(request: Request) -> Settings:
@@ -61,8 +63,20 @@ async def current_principal(user: Annotated[User, Depends(current_user)]) -> Pri
     return Principal.from_user(user)
 
 
+def checkpointer_of(request: Request) -> BaseCheckpointSaver[Any]:
+    return request.app.state.checkpointer  # type: ignore[no-any-return]
+
+
+def agent_of(request: Request) -> AgentGraph:
+    """The compiled graph, built once for the process."""
+    return request.app.state.agent  # type: ignore[no-any-return]
+
+
 CurrentUser = Annotated[User, Depends(current_user)]
 CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
 DbSession = Annotated[AsyncSession, Depends(db_session)]
 AppSettings = Annotated[Settings, Depends(settings_of)]
+Checkpointer = Annotated["BaseCheckpointSaver[Any]", Depends(checkpointer_of)]
+Agent = Annotated["AgentGraph", Depends(agent_of)]
+
 Sessions = Annotated[async_sessionmaker[AsyncSession], Depends(sessions_of)]
