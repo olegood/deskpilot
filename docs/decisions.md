@@ -1251,3 +1251,27 @@ visible instead of hiding it.
 **Decision.** Every message is rendered as a text node. Nothing is parsed as markdown or HTML, and `dangerouslySetInnerHTML` appears nowhere.
 
 **Why.** It is model output, derived from a ticket somebody else wrote. Rendering it as markup is how an image tag pointing at another host turns a conversation into an exfiltration channel. Making it pretty is worth doing after the security milestone has dealt with sanitising untrusted text, and not before.
+
+---
+
+### D-115: The committed OpenAPI document is checked against the app
+
+**Date:** 2026-09-16
+
+**Decision.** `frontend/src/api/openapi.json` is committed, and a fast unit test compares it against what `create_app().openapi()` produces.
+
+**Why.** The frontend's types are generated from that file, so a stale copy means the types describe an API that no longer exists — which defeats the whole reason for generating them ([D-110](#d-110-the-frontends-types-are-generated-from-the-backends-schema)). Committing it makes the contract reviewable in a diff; testing it makes the contract true. It is the same idea as `alembic check`.
+
+**Consequences.** Changing a response model now fails the backend test suite until the schema is regenerated, which is the right moment to notice. The test passes silently when the file is absent, so a backend-only checkout still works.
+
+---
+
+### D-116: Logging out does not invalidate the access token
+
+**Date:** 2026-09-16
+
+**Decision.** `POST /api/auth/logout` revokes the refresh family and clears the cookie. An access token already in the client's hands stays valid until it expires.
+
+**Why.** Killing it immediately means bumping `token_version`, and that signs the person out of every other device as well. That is what "sign out everywhere" is for; it is not what "sign out" means on one laptop. The exposure is bounded by the access token's lifetime, which is fifteen minutes and short for exactly this reason.
+
+**Consequences.** Recorded because it looks like a bug when you first notice it. A deployment that cannot accept a fifteen-minute window needs a denylist of token ids, which is a shared store and a lookup on every request — the cost that short tokens exist to avoid.

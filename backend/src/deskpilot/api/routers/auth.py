@@ -158,6 +158,12 @@ async def logout(
     No CSRF check and no error when the token is unknown: being logged out against
     your will is an annoyance, not a compromise, and a logout that reports whether
     a token existed is an oracle (D-065).
+
+    The access token the client already holds stays valid until it expires, which
+    is at most fifteen minutes. Killing it immediately would mean bumping
+    token_version, and that signs the person out of every other device too -
+    which is what "sign out everywhere" is for, not what "sign out" means. Short
+    access tokens are the answer, and they are already short.
     """
     if deskpilot_refresh:
         await log_out(db, deskpilot_refresh)

@@ -2,7 +2,7 @@
 
 The HTTP layer.
 
-> Last verified against: milestone 5, step 5.3.
+> Last verified against: milestone 5 (complete).
 
 Everything here is a thin shell over services that already exist and are already
 tested. A route reads the request, calls a service, and shapes the response; the
@@ -73,6 +73,13 @@ never attach on its own. Adding a CSRF check there would be ritual
 
 Logout has no check either: being signed out against your will is an annoyance, not
 a compromise.
+
+Logout revokes the refresh family and clears the cookie, but an **access token
+already in the client's hands stays valid until it expires** — at most fifteen
+minutes. Killing it immediately would mean bumping `token_version`, which signs the
+person out of every other device too. That is what "sign out everywhere" is for. The
+window is bounded, and it is short for exactly this reason
+([D-116](../decisions.md#d-116-logging-out-does-not-invalidate-the-access-token)).
 
 ## Rate limiting
 
@@ -214,6 +221,22 @@ as nothing.
 `Forbidden` carries the real reason, and it goes to the audit log rather than over
 the wire — the same rule as everywhere else
 ([D-079](../decisions.md#d-079-the-refusal-a-caller-sees-carries-no-reason)).
+
+## The schema is a checked contract
+
+`frontend/src/api/openapi.json` is committed, and a backend unit test compares it
+against what the app produces. A stale copy would mean the frontend's generated
+types describe an API that no longer exists, which defeats the reason for
+generating them ([D-115](../decisions.md#d-115-the-committed-openapi-document-is-checked-against-the-app)).
+
+Changing a response model therefore fails the test suite until you run:
+
+```bash
+uv run deskpilot openapi --out ../frontend/src/api/openapi.json
+cd ../frontend && pnpm types
+```
+
+Which is the right moment to notice.
 
 ## Headers and CORS
 

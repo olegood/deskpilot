@@ -10,8 +10,8 @@ Each milestone ends with something runnable, tested, and documented.
 | 2 | Tools and state: the full read-only tool set, typed tickets, checkpointing, conversation memory | **Done** |
 | 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | **Done** |
 | 4 | ABAC: policy engine, audit log, principal injection into tools | **Done** |
-| 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | In progress |
-| 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Planned |
+| 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | **Done** |
+| 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Next |
 | 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned |
 | 8 | Delegated OAuth: Connections page, PKCE flow, token vault | Planned |
 | 9 | Human-in-the-loop via web: approvals under the reviewer's token, idempotency | Planned |
@@ -59,7 +59,7 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **5.2 Ticket endpoints.** Opening, replying, listing and reading, each asking the same policy engine the tools ask, with the agent graph built once for the process.
 - [x] **5.3 Streaming.** Agent progress over SSE: category, tool calls, the answer a token at a time, and the ticket saved when the stream finishes.
 - [x] **5.4 The React shell.** Vite with strict TypeScript, types generated from the OpenAPI document, an access token held in memory with single-flight refresh, a hand-written SSE reader, login and the customer portal.
-- [ ] **5.5 Wrap-up.** Docs pass and a demo.
+- [x] **5.5 Wrap-up.** A test that the committed OpenAPI document matches the app, README refreshed, and a docs pass.
 
 ## Post-production backlog
 

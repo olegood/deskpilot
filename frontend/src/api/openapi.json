@@ -120,7 +120,7 @@
           "auth"
         ],
         "summary": "Logout",
-        "description": "Revoke the family and clear the cookie.\n\nNo CSRF check and no error when the token is unknown: being logged out against\nyour will is an annoyance, not a compromise, and a logout that reports whether\na token existed is an oracle (D-065).",
+        "description": "Revoke the family and clear the cookie.\n\nNo CSRF check and no error when the token is unknown: being logged out against\nyour will is an annoyance, not a compromise, and a logout that reports whether\na token existed is an oracle (D-065).\n\nThe access token the client already holds stays valid until it expires, which\nis at most fifteen minutes. Killing it immediately would mean bumping\ntoken_version, and that signs the person out of every other device too -\nwhich is what \"sign out everywhere\" is for, not what \"sign out\" means. Short\naccess tokens are the answer, and they are already short.",
         "operationId": "logout_api_auth_logout_post",
         "parameters": [
           {

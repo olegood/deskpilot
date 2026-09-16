@@ -2,7 +2,7 @@
 
 Deciding what somebody is allowed to do.
 
-> Last verified against: milestone 4 (complete).
+> Last verified against: milestone 5 (complete).
 
 Who somebody is is a separate question, answered by the
 [authentication guide](auth.md). This is about what happens next.

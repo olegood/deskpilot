@@ -1,7 +1,7 @@
 # Architecture overview
 
 > Describes the target design. Parts not built yet are listed in the [roadmap](../roadmap.md).
-> Last updated: milestone 4 (complete).
+> Last updated: milestone 5 (complete).
 
 ## What Deskpilot does
 
@@ -121,7 +121,7 @@ See [the Ollama guide](../guides/ollama.md) for memory planning and the [configu
 
 ## Repository layout
 
-Target layout. So far `backend/` has config, the model factory, the database layer with checkpointing, the agent graph with four read-only tools and a classifier, the policy knowledge base, the eval suite, and the CLI; `infra/`, `scripts/`, and `docs/` exist too.
+Target layout. So far `backend/` has config, the model factory, the database layer with checkpointing, the agent graph with four read-only tools and a classifier, the policy knowledge base, authentication and authorization, the HTTP API, the eval suite, and the CLI. `frontend/` has the customer-facing app. `infra/`, `scripts/`, and `docs/` exist too.
 
 ```
 deskpilot/

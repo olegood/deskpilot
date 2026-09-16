@@ -27,17 +27,31 @@ by strangers is the actual work.
 
 ## Status
 
-**Milestones 1 to 4 of 14 complete.** The agent holds a multi-turn conversation
+**Milestones 1 to 5 of 14 complete.** The agent holds a multi-turn conversation
 about a customer's own orders, retrieves the shop's published policies from a vector
 index, labels each ticket, and is measured by a small eval suite. People log in with
 a real password and a real session, every tool asks an attribute-based policy engine
-before it answers, and every refusal is recorded. Everything runs on a local model.
+before it answers, and every refusal is recorded. There is an HTTP API and a React
+app where the answer arrives a word at a time. Everything runs on a local model.
 
 See the [roadmap](docs/roadmap.md) for what's next.
 
 ## Try it
 
-Full instructions are in the [setup guide](docs/guides/setup.md). Once it's running:
+Full instructions are in the [setup guide](docs/guides/setup.md).
+
+```bash
+./scripts/ollama-serve.sh                       # local models
+docker compose up -d                            # PostgreSQL
+cd backend  && uv run deskpilot serve --reload  # the API
+cd frontend && pnpm dev                         # the app, on :5173
+```
+
+Sign in as a seeded customer and ask where an order is. The category appears, then
+the tool lookup, then the answer a word at a time — the agent's progress streamed
+over SSE rather than a spinner.
+
+It all works from the command line too:
 
 ```console
 $ uv run deskpilot auth login kenji.tanaka@example.com
@@ -119,6 +133,7 @@ SQLAlchemy, Alembic, pytest, Ollama, React and TypeScript.
 - [Evals guide](docs/guides/evals.md) — how behaviour is measured
 - [Authentication guide](docs/guides/auth.md) — accounts, passwords, tokens, sessions
 - [API guide](docs/guides/api.md) — the HTTP layer
+- [Frontend guide](docs/guides/frontend.md) — the React app
 - [Architecture overview](docs/architecture/overview.md) — the whole system
 - [Decision log](docs/decisions.md) — why it's built this way
 - [All documentation](docs/README.md)

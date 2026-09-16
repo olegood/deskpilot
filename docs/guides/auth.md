@@ -2,7 +2,7 @@
 
 Accounts, passwords, and how a login is checked.
 
-> Last verified against: milestone 4 (complete).
+> Last verified against: milestone 5 (complete).
 
 This covers **who somebody is**. What they are allowed to do is a separate
 question, answered by the ABAC milestone.
