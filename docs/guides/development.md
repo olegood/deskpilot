@@ -38,6 +38,8 @@ deskpilot/
 │       ├── unit/              # fast, no external services
 │       ├── graph/             # the agent loop, driven by a scripted model
 │       └── integration/       # real services, skipped by default
+├── vendors/
+│   └── shiptrack/             # the fake carrier (its own uv project)
 ├── frontend/                  # React + TypeScript (pnpm)
 │   └── src/
 │       ├── api/               # generated types, client, SSE reader

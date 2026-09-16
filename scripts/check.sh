@@ -31,6 +31,19 @@ else
     echo "── skipping frontend: run pnpm install in frontend/ ──"
 fi
 
+# The fake vendors are separate projects with their own dependencies and their own
+# test suites. They are checked here so a change to one cannot be forgotten.
+for vendor in "$root"/vendors/*/; do
+    [[ -f "$vendor/pyproject.toml" ]] || continue
+    echo "── $(basename "$vendor") ──"
+    cd "$vendor"
+    run uv sync --locked
+    run uv run ruff check .
+    run uv run ruff format --check .
+    run uv run mypy src
+    run uv run pytest
+done
+
 if [[ "${1:-}" == "--all" ]]; then
     cd "$root/backend"
     run uv run pytest -m integration

@@ -1275,3 +1275,61 @@ visible instead of hiding it.
 **Why.** Killing it immediately means bumping `token_version`, and that signs the person out of every other device as well. That is what "sign out everywhere" is for; it is not what "sign out" means on one laptop. The exposure is bounded by the access token's lifetime, which is fifteen minutes and short for exactly this reason.
 
 **Consequences.** Recorded because it looks like a bug when you first notice it. A deployment that cannot accept a fifteen-minute window needs a denylist of token ids, which is a shared store and a lookup on every request — the cost that short tokens exist to avoid.
+
+---
+
+### D-117: The carrier is a separate service, not a mock
+
+**Date:** 2026-09-16
+
+**Decision.** ShipTrack is its own uv project, its own container, its own settings, and its own test suite. Deskpilot reaches it over HTTP and shares nothing with it but a secret.
+
+**Why.** [D-014](#d-014-each-service-is-its-own-uv-project) said the vendors would be separate projects; this is what that buys. A mock patched into the client tests the client against the author's belief about the carrier. A service tests it against something that can disagree - that can be slow, return a 500, hang, or refuse a signature the client thought was fine.
+
+**Consequences.** Two `uv sync`s, two test suites, and `scripts/check.sh` walks `vendors/*` so a change to one cannot be forgotten.
+
+---
+
+### D-118: The signature covers method, path, timestamp, nonce, and a body digest
+
+**Date:** 2026-09-16
+
+**Decision.** The signed string is those five joined by newlines, HMAC-SHA256 with a shared secret.
+
+**Why.** Each piece closes a hole, and a test asserts that changing each one changes the signature. Without the **method and path** a captured read is replayable as a write, or against another customer's parcel. Without the **timestamp** a capture works for ever. Without the **nonce** it works repeatedly inside the window. Without the **body digest** the body can be swapped under a valid signature, which is the one people leave out.
+
+The newlines matter too: concatenating without a separator lets a path ending in `1` with nonce `23` produce the same string as a path ending in `12` with nonce `3`. That has its own test.
+
+---
+
+### D-119: The nonce is recorded only for a request that was otherwise valid
+
+**Date:** 2026-09-16
+
+**Decision.** Replay checking happens after the signature check, not before.
+
+**Why.** Recording the nonce of a request that failed for another reason lets anybody burn nonces they never legitimately used - send a million unsigned requests carrying guessed nonces and the real client starts being refused. Checking it last means only a caller who already proved they hold the secret can spend one.
+
+---
+
+### D-120: Every refusal reads the same and the reason goes to the log
+
+**Date:** 2026-09-16
+
+**Decision.** Unknown key, wrong signature, stale timestamp, reused nonce and missing header all return the same 401 body. The real reason is logged.
+
+**Why.** The same rule as Deskpilot's own login ([D-055](#d-055-every-login-failure-looks-and-costs-the-same)), applied in the other direction. "Unknown key id" versus "signature does not match" tells a prober which half of the credential they have right.
+
+**Consequences.** Chaos is applied after authentication for the same reason: if a failing carrier refused bad signatures differently from good ones, the failure rate itself would leak.
+
+---
+
+### D-121: The chaos knobs exist so the resilience can be tested
+
+**Date:** 2026-09-16
+
+**Decision.** ShipTrack can add latency, return 500s, and hang, by configuration or through a signed endpoint at runtime.
+
+**Why.** A supplier that always answers in five milliseconds teaches nothing about timeouts, retries, or circuit breakers, and a client's resilience that has never been exercised is a claim rather than a property. The hang is the important one: a 500 is obvious, while a connection that stays open looks like a slow response until somebody's timeout decides otherwise - and a client without one waits for ever.
+
+**Consequences.** The randomness is seedable, so a test can arrange a failure and get the same one twice.

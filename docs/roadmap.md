@@ -11,7 +11,7 @@ Each milestone ends with something runnable, tested, and documented.
 | 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | **Done** |
 | 4 | ABAC: policy engine, audit log, principal injection into tools | **Done** |
 | 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | **Done** |
-| 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | Next |
+| 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | In progress |
 | 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned |
 | 8 | Delegated OAuth: Connections page, PKCE flow, token vault | Planned |
 | 9 | Human-in-the-loop via web: approvals under the reviewer's token, idempotency | Planned |
@@ -60,6 +60,13 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **5.3 Streaming.** Agent progress over SSE: category, tool calls, the answer a token at a time, and the ticket saved when the stream finishes.
 - [x] **5.4 The React shell.** Vite with strict TypeScript, types generated from the OpenAPI document, an access token held in memory with single-flight refresh, a hand-written SSE reader, login and the customer portal.
 - [x] **5.5 Wrap-up.** A test that the committed OpenAPI document matches the app, README refreshed, and a docs pass.
+
+## Milestone 6: the ShipTrack integration
+
+- [x] **6.1 The carrier.** A separate service with its own project, secret and data: HMAC-signed requests covering method, path, timestamp, nonce and body digest, replay protection, and chaos knobs for latency, errors and hangs.
+- [ ] **6.2 The client.** Signed requests from Deskpilot, timeouts, retries, a circuit breaker, and a `track_shipment` tool.
+- [ ] **6.3 Webhooks.** ShipTrack calling back, with the signature verified in the other direction.
+- [ ] **6.4 Wrap-up.** Docs pass and a demo.
 
 ## Post-production backlog
 

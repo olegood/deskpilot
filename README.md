@@ -134,6 +134,7 @@ SQLAlchemy, Alembic, pytest, Ollama, React and TypeScript.
 - [Authentication guide](docs/guides/auth.md) — accounts, passwords, tokens, sessions
 - [API guide](docs/guides/api.md) — the HTTP layer
 - [Frontend guide](docs/guides/frontend.md) — the React app
+- [Vendors guide](docs/guides/vendors.md) — the fake companies Deskpilot integrates with
 - [Architecture overview](docs/architecture/overview.md) — the whole system
 - [Decision log](docs/decisions.md) — why it's built this way
 - [All documentation](docs/README.md)

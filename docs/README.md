@@ -16,11 +16,13 @@
 | [Authorization guide](guides/authorization.md) | Attributes, rules, and how a decision is made |
 | [API guide](guides/api.md) | The HTTP layer: tokens, cookies, CSRF, rate limiting, errors |
 | [Frontend guide](guides/frontend.md) | The React app: generated types, tokens, streaming, rendering |
+| [Vendors guide](guides/vendors.md) | The fake companies: signing, replay protection, chaos |
 | [Evals guide](guides/evals.md) | The dataset, how cases are scored, and how to run the suite |
 | [Authentication guide](guides/auth.md) | Accounts, passwords, and how a login is checked |
 | [Authorization guide](guides/authorization.md) | Attributes, rules, and how a decision is made |
 | [API guide](guides/api.md) | The HTTP layer: tokens, cookies, CSRF, rate limiting, errors |
 | [Frontend guide](guides/frontend.md) | The React app: generated types, tokens, streaming, rendering |
+| [Vendors guide](guides/vendors.md) | The fake companies: signing, replay protection, chaos |
 | [Configuration reference](reference/configuration.md) | Every setting and environment variable |
 
 ## Where to start
