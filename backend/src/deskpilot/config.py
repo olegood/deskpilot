@@ -167,6 +167,31 @@ class ApiSettings(BaseModel):
     login_window_seconds: int = Field(default=300, gt=0)
 
 
+class ShipTrackSettings(BaseModel):
+    """How Deskpilot talks to the carrier."""
+
+    model_config = ConfigDict(frozen=True)
+
+    base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8100")
+    key_id: str = "deskpilot"
+    # The same value ShipTrack has. No default: a shared secret with a default is
+    # a shared secret everybody has.
+    secret: SecretStr | None = None
+
+    # Connecting should be quick or not at all. Reading is where a hang shows up,
+    # and this is the number that turns "never answers" into "failed".
+    connect_timeout_s: float = Field(default=3.0, gt=0)
+    read_timeout_s: float = Field(default=8.0, gt=0)
+
+    # Attempts after the first. Only for failures that might not happen again.
+    retries: int = Field(default=2, ge=0)
+    backoff_seconds: float = Field(default=0.25, gt=0)
+
+    # Consecutive failures before the circuit opens, and how long it stays open.
+    breaker_threshold: int = Field(default=5, gt=0)
+    breaker_reset_seconds: float = Field(default=30.0, gt=0)
+
+
 class ToolSettings(BaseModel):
     """Limits that protect the context window from a tool's own output.
 
@@ -267,6 +292,7 @@ class Settings(BaseSettings):
     )
     embeddings: EmbeddingSettings = EmbeddingSettings()
     api: ApiSettings = ApiSettings()
+    shiptrack: ShipTrackSettings = ShipTrackSettings()
     auth: AuthSettings = AuthSettings()
     tools: ToolSettings = ToolSettings()
     policy_search: PolicySearchSettings = PolicySearchSettings()

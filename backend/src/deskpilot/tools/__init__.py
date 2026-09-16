@@ -15,9 +15,23 @@ from langchain_core.tools import BaseTool
 from deskpilot.tools.customers import get_customer
 from deskpilot.tools.orders import get_order, list_orders
 from deskpilot.tools.policy import search_policy
+from deskpilot.tools.shipping import track_shipment
 
 # Order matters a little: the model reads these as a list, and the ones it should
 # reach for first are listed first.
-ALL_TOOLS: list[BaseTool] = [get_order, list_orders, get_customer, search_policy]
+ALL_TOOLS: list[BaseTool] = [
+    get_order,
+    list_orders,
+    track_shipment,
+    get_customer,
+    search_policy,
+]
 
-__all__ = ["ALL_TOOLS", "get_customer", "get_order", "list_orders", "search_policy"]
+__all__ = [
+    "ALL_TOOLS",
+    "get_customer",
+    "get_order",
+    "list_orders",
+    "search_policy",
+    "track_shipment",
+]

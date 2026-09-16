@@ -1333,3 +1333,79 @@ The newlines matter too: concatenating without a separator lets a path ending in
 **Why.** A supplier that always answers in five milliseconds teaches nothing about timeouts, retries, or circuit breakers, and a client's resilience that has never been exercised is a claim rather than a property. The hang is the important one: a 500 is obvious, while a connection that stays open looks like a slow response until somebody's timeout decides otherwise - and a client without one waits for ever.
 
 **Consequences.** The randomness is seedable, so a test can arrange a failure and get the same one twice.
+
+---
+
+### D-122: The client re-implements the signing scheme
+
+**Date:** 2026-09-16
+
+**Decision.** `deskpilot/integrations/shiptrack/signing.py` is a second implementation of the same scheme, not an import from the vendor package.
+
+**Why.** ShipTrack is another company. In life its scheme arrives as a document and you write the code. Sharing a helper would also make the contract test meaningless: a shared implementation cannot disagree with itself, so it can never catch the case where one side changes and the other does not.
+
+**Consequences.** The duplication is the point and should not be refactored away. A test asserts that nothing under `src/deskpilot` imports `shiptrack`, so the shortcut cannot be taken by accident.
+
+---
+
+### D-123: Retries only for failures that might not happen again
+
+**Date:** 2026-09-16
+
+**Decision.** Timeouts, connection errors, and 5xx are retried. A 4xx is not, and neither is a 404 or a 401.
+
+**Why.** Retrying a 401 is asking the same question and expecting a different answer. It also matters for the breaker: a wrong key is our problem, and letting it trip the circuit would stop every later request for a reason that has nothing to do with the carrier's health. A test asserts a bad secret leaves the circuit closed.
+
+**Consequences.** Every attempt signs afresh, with its own timestamp and nonce. Reusing them would make a retry fail as stale or as a replay — a failure that has nothing to do with why the first attempt failed.
+
+---
+
+### D-124: A retried call is one failure, not several
+
+**Date:** 2026-09-16
+
+**Decision.** The breaker records one failure per logical call, after the retries are exhausted.
+
+**Why.** Counting each attempt would trip a five-failure circuit on the second bad request, which is the opposite of what retries are for. The breaker is asking "is this service healthy", and one call that failed three ways is one piece of evidence.
+
+---
+
+### D-125: The three layers only work in order
+
+**Date:** 2026-09-16
+
+**Decision.** A read timeout, then retries, then a circuit breaker.
+
+**Why.** Each one is useless without the one before. Without the **timeout** nothing ever fails, so retries never fire and the breaker never trips — a hung connection just waits. Without the **breaker** the retries make an outage worse: every request spends its whole timeout budget three times over, so a dead supplier becomes a slow application, and the retries arrive exactly as the supplier tries to recover. The jitter on the backoff is part of that: without it every client that failed together retries together.
+
+---
+
+### D-126: The tool takes an order number, not a tracking number
+
+**Date:** 2026-09-16
+
+**Decision.** `track_shipment(order_number)` looks the tracking number up from an order the customer owns, after asking the policy engine.
+
+**Why.** A tool that accepted a tracking number would report on any parcel in the carrier's system to anybody who could guess one — and tracking numbers are sequential. The identifier the model is allowed to supply is the one whose ownership can be checked.
+
+---
+
+### D-127: A carrier failure is a sentence, not an exception
+
+**Date:** 2026-09-16
+
+**Decision.** `track_shipment` catches `CarrierUnavailable` and returns a fixed line telling the agent to say the tracking information is temporarily unavailable.
+
+**Why.** The agent's job at that moment is to say something true to a customer, and "we cannot reach the carrier" is true. Letting the exception through would make the model interpret a stack trace, and the failure would end the turn instead of producing a reply.
+
+---
+
+### D-128: An in-process transport cannot test a timeout
+
+**Date:** 2026-09-16
+
+**Decision.** The hang test runs against a real TCP listener that accepts and never answers. Everything else uses httpx's `ASGITransport`.
+
+**Why.** Found by the test failing. `ASGITransport` calls the application directly in the same process, and an httpx timeout is a network timeout — there is no socket to give up on, so a handler that sleeps simply sleeps and the client waits with it. The one property that most needed testing was the one the convenient transport could not test.
+
+**Consequences.** The listener releases its handler on teardown through an event. Left to sleep, closing the server waits for it, and the test paid thirty seconds on the way out instead of one and a half.

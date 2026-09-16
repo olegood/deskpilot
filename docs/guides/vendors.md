@@ -2,7 +2,7 @@
 
 The fake companies Deskpilot integrates with.
 
-> Last verified against: milestone 6, step 6.1.
+> Last verified against: milestone 6, step 6.2.
 
 | Vendor | What it is | Protocol | Authentication |
 |---|---|---|---|
@@ -103,6 +103,65 @@ Chaos is applied **after** authentication, so a failing carrier still refuses ba
 signatures in exactly the same way. Otherwise the failure rate itself would leak
 whether a key was right.
 
+## The client
+
+`backend/src/deskpilot/integrations/shiptrack/` is Deskpilot's side. Three layers,
+and **they only work in this order**
+([D-125](../decisions.md#d-125-the-three-layers-only-work-in-order)):
+
+| Layer | What it does | Without it |
+|---|---|---|
+| Read timeout | Turns "never answers" into "failed" | Nothing ever fails, so nothing below ever fires |
+| Retries | A blip does not reach the customer | A single 500 becomes an error |
+| Circuit breaker | Stops asking a service that is down | Retries make an outage worse, not better |
+
+The breaker is the one people leave out, and it is the one that stops a dead
+supplier turning into a slow application: without it every request spends its whole
+timeout budget three times over, and the retries arrive exactly as the supplier is
+trying to recover. The jitter on the backoff is part of the same argument — without
+it, every client that failed together retries together.
+
+### What is retried, and what is not
+
+Timeouts, connection errors and 5xx are retried. A 401 or a 404 is not: retrying is
+asking the same question and expecting a different answer
+([D-123](../decisions.md#d-123-retries-only-for-failures-that-might-not-happen-again)).
+
+A wrong key also must not trip the breaker. That is our problem to fix, and letting
+it open the circuit would stop every later request for a reason that has nothing to
+do with the carrier's health. A test asserts a bad secret leaves the circuit closed.
+
+**Each attempt signs afresh.** Reusing a timestamp and nonce would make the retry
+fail as stale or as a replay — a failure with nothing to do with why the first
+attempt failed.
+
+**A retried call is one failure, not several.** Counting each attempt would trip a
+five-failure circuit on the second bad request
+([D-124](../decisions.md#d-124-a-retried-call-is-one-failure-not-several)).
+
+### The signing code is written twice
+
+`integrations/shiptrack/signing.py` re-implements the vendor's scheme rather than
+importing it. That is deliberate: in life the scheme arrives as a document and you
+write the code. Sharing a helper would also make the contract test meaningless,
+because a shared implementation cannot disagree with itself
+([D-122](../decisions.md#d-122-the-client-re-implements-the-signing-scheme)).
+
+A test asserts nothing under `src/deskpilot` imports `shiptrack`, so the shortcut
+cannot be taken by accident.
+
+### The tool
+
+`track_shipment(order_number)` — an **order** number, never a tracking number. It
+looks the tracking number up from an order the customer owns, after asking the
+policy engine. A tool that accepted a tracking number would report on any parcel in
+the carrier's system to anybody who could guess one, and tracking numbers are
+sequential ([D-126](../decisions.md#d-126-the-tool-takes-an-order-number-not-a-tracking-number)).
+
+When the carrier is unreachable the tool returns a sentence, not an exception. The
+agent's job at that moment is to say something true to a customer, and "we cannot
+reach the carrier" is true ([D-127](../decisions.md#d-127-a-carrier-failure-is-a-sentence-not-an-exception)).
+
 ## Testing a vendor
 
 Each vendor has its own suite, run by `scripts/check.sh` along with everything else:
@@ -111,8 +170,23 @@ Each vendor has its own suite, run by `scripts/check.sh` along with everything e
 cd vendors/shiptrack && uv run pytest
 ```
 
-One detail that costs an hour if you meet it cold: Starlette's 500 handler sends the
-response **and then re-raises**, so the process running the server logs the
-traceback. httpx's `ASGITransport` propagates that by default, so a test asserting on
-a 500 gets the original exception instead. The fixtures pass
-`raise_app_exceptions=False`, which is what a real client over a real socket sees.
+Deskpilot's side is tested against the real carrier, in process:
+`tests/integration/test_carrier_client.py` runs both halves and asserts they agree.
+ShipTrack is a **dev-only** dependency of the backend for exactly this, which is why
+the "nothing imports it" test exists.
+
+Two details that each cost an hour if you meet them cold.
+
+**Starlette's 500 handler sends the response and then re-raises**, so the process
+running the server logs the traceback. httpx's `ASGITransport` propagates that by
+default, so a test asserting on a 500 gets the original exception instead. The
+fixtures pass `raise_app_exceptions=False`, which is what a real client over a real
+socket sees.
+
+**An in-process transport cannot test a timeout.** `ASGITransport` calls the
+application directly, and an httpx timeout is a *network* timeout — there is no
+socket to give up on, so a handler that sleeps simply sleeps and the client waits
+with it. The hang test therefore runs against a real TCP listener that accepts and
+never answers. The one property that most needed testing was the one the convenient
+transport could not test
+([D-128](../decisions.md#d-128-an-in-process-transport-cannot-test-a-timeout)).

@@ -15,6 +15,7 @@ from deskpilot.authz.principal import Principal
 from deskpilot.config import Settings
 from deskpilot.db.models import User
 from deskpilot.graph.runner import AgentGraph
+from deskpilot.integrations.shiptrack import ShipTrackClient
 
 
 def settings_of(request: Request) -> Settings:
@@ -67,6 +68,10 @@ def checkpointer_of(request: Request) -> BaseCheckpointSaver[Any]:
     return request.app.state.checkpointer  # type: ignore[no-any-return]
 
 
+def carrier_of(request: Request) -> ShipTrackClient | None:
+    return request.app.state.carrier  # type: ignore[no-any-return]
+
+
 def agent_of(request: Request) -> AgentGraph:
     """The compiled graph, built once for the process."""
     return request.app.state.agent  # type: ignore[no-any-return]
@@ -78,5 +83,6 @@ DbSession = Annotated[AsyncSession, Depends(db_session)]
 AppSettings = Annotated[Settings, Depends(settings_of)]
 Checkpointer = Annotated["BaseCheckpointSaver[Any]", Depends(checkpointer_of)]
 Agent = Annotated["AgentGraph", Depends(agent_of)]
+Carrier = Annotated["ShipTrackClient | None", Depends(carrier_of)]
 
 Sessions = Annotated[async_sessionmaker[AsyncSession], Depends(sessions_of)]

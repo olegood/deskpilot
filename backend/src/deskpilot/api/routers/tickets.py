@@ -18,6 +18,7 @@ from deskpilot.api import sse
 from deskpilot.api.deps import (
     Agent,
     AppSettings,
+    Carrier,
     Checkpointer,
     CurrentPrincipal,
     DbSession,
@@ -120,6 +121,7 @@ async def respond(
     principal: Principal,
     ticket: Ticket,
     message: str,
+    carrier: Carrier = None,
 ) -> AgentRun:
     """Run one agent turn for a ticket and record what it decided.
 
@@ -131,6 +133,7 @@ async def respond(
         session_factory=sessions,
         policy_search=settings.policy_search,
         tools=settings.tools,
+        carrier=carrier,
     )
     return await run_turn(agent, message, context, ticket.thread_id)
 

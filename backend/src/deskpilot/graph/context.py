@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deskpilot.authz.principal import Principal
 from deskpilot.config import PolicySearchSettings, ToolSettings
+from deskpilot.integrations.shiptrack import ShipTrackClient
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,9 @@ class AgentContext:
     # its caller and a test can vary it without touching the environment.
     policy_search: PolicySearchSettings = field(default_factory=PolicySearchSettings)
     tools: ToolSettings = field(default_factory=ToolSettings)
+    # The carrier client, when one is configured. None in a test or a deployment
+    # with no carrier, and the tool says so rather than failing.
+    carrier: ShipTrackClient | None = None
 
     @property
     def customer_email(self) -> str:

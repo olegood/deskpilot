@@ -77,6 +77,20 @@ JSON object, and a longer answer means it ignored the schema.
 | `DESKPILOT_API__LOGIN_ATTEMPTS_PER_IP` | `20` | Failed logins allowed from one address per window, whichever accounts they target. |
 | `DESKPILOT_API__LOGIN_WINDOW_SECONDS` | `300` | Length of that window. |
 
+## The ShipTrack carrier
+
+| Variable | Default | Description |
+|---|---|---|
+| `DESKPILOT_SHIPTRACK__SECRET` | unset | The signing secret. The same value ShipTrack has. With no secret the client is not built and the tool reports the carrier as unavailable. |
+| `DESKPILOT_SHIPTRACK__BASE_URL` | `http://127.0.0.1:8100` | Where the carrier is. |
+| `DESKPILOT_SHIPTRACK__KEY_ID` | `deskpilot` | Which key the signature is made with. |
+| `DESKPILOT_SHIPTRACK__CONNECT_TIMEOUT_S` | `3.0` | Connecting should be quick or not at all. |
+| `DESKPILOT_SHIPTRACK__READ_TIMEOUT_S` | `8.0` | The number that turns "never answers" into "failed". |
+| `DESKPILOT_SHIPTRACK__RETRIES` | `2` | Attempts after the first, for failures that might not happen again. |
+| `DESKPILOT_SHIPTRACK__BACKOFF_SECONDS` | `0.25` | Base for the exponential backoff. Jittered. |
+| `DESKPILOT_SHIPTRACK__BREAKER_THRESHOLD` | `5` | Consecutive failed calls before the circuit opens. |
+| `DESKPILOT_SHIPTRACK__BREAKER_RESET_SECONDS` | `30.0` | How long before one probe is let through. |
+
 ## Authentication
 
 | Variable | Default | Description |

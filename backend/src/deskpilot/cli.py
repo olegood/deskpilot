@@ -62,6 +62,7 @@ from deskpilot.evals.runner import Report, run_suite, select, write_report
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.conversation import load_messages
 from deskpilot.graph.runner import AgentRun, run_agent
+from deskpilot.integrations.shiptrack import ShipTrackClient
 from deskpilot.knowledge.index import DocumentState, PolicyIndexError, build_index, index_status
 from deskpilot.knowledge.search import PolicyPassage, search_policy_index
 from deskpilot.llm import build_embeddings
@@ -104,6 +105,7 @@ class Runtime:
     settings: Settings
     sessions: async_sessionmaker[AsyncSession]
     checkpointer: BaseCheckpointSaver[Any]
+    carrier: ShipTrackClient | None
     embeddings: Embeddings
 
     def context_for(self, principal: Principal) -> AgentContext:
@@ -113,6 +115,7 @@ class Runtime:
             embeddings=self.embeddings,
             policy_search=self.settings.policy_search,
             tools=self.settings.tools,
+            carrier=self.carrier,
         )
 
 
@@ -120,12 +123,17 @@ class Runtime:
 async def runtime() -> AsyncIterator[Runtime]:
     settings = get_settings()
     engine = create_engine(settings.database)
+    # None when no secret is configured, which is a perfectly reasonable way to
+    # run: the carrier tool then says the carrier is unavailable rather than
+    # failing to start.
+    carrier = ShipTrackClient(settings.shiptrack) if settings.shiptrack.secret else None
     try:
         async with open_checkpointer(settings.database) as checkpointer:
             yield Runtime(
                 settings=settings,
                 sessions=create_session_factory(engine),
                 checkpointer=checkpointer,
+                carrier=carrier,
                 embeddings=build_embeddings(settings),
             )
     finally:

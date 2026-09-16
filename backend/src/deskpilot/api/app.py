@@ -15,6 +15,7 @@ from deskpilot.config import ModelRole, Settings, get_settings
 from deskpilot.db.checkpointer import open_checkpointer
 from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.graph.agent import build_agent_graph
+from deskpilot.integrations.shiptrack import ShipTrackClient
 from deskpilot.llm import build_chat_model
 from deskpilot.tools import ALL_TOOLS
 
@@ -40,6 +41,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # One checkpointer and one graph for the process. Building a graph per
             # request would rebuild the model client and its connection pool every
             # time; run_turn exists precisely so the graph can be shared.
+            app.state.carrier = (
+                ShipTrackClient(settings.shiptrack) if settings.shiptrack.secret else None
+            )
             async with open_checkpointer(settings.database) as checkpointer:
                 app.state.checkpointer = checkpointer
                 app.state.agent = build_agent_graph(
@@ -52,6 +56,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 logger.info("deskpilot api ready")
                 yield
         finally:
+            carrier = getattr(app.state, "carrier", None)
+            if carrier is not None:
+                await carrier.aclose()
             await engine.dispose()
 
     app = FastAPI(

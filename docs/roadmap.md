@@ -64,7 +64,7 @@ Each milestone ends with something runnable, tested, and documented.
 ## Milestone 6: the ShipTrack integration
 
 - [x] **6.1 The carrier.** A separate service with its own project, secret and data: HMAC-signed requests covering method, path, timestamp, nonce and body digest, replay protection, and chaos knobs for latency, errors and hangs.
-- [ ] **6.2 The client.** Signed requests from Deskpilot, timeouts, retries, a circuit breaker, and a `track_shipment` tool.
+- [x] **6.2 The client.** Signed requests from Deskpilot, a read timeout that survives a hang, retries only for what might succeed later, a per-service circuit breaker, a `track_shipment` tool, and contract tests against the real carrier.
 - [ ] **6.3 Webhooks.** ShipTrack calling back, with the signature verified in the other direction.
 - [ ] **6.4 Wrap-up.** Docs pass and a demo.
 
