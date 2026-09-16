@@ -1143,3 +1143,55 @@ visible instead of hiding it.
 **Decision.** `GET /api/tickets/{reference}` returns customer and agent turns only. Tool calls and their results are available to the CLI and not over HTTP.
 
 **Why.** Two reasons, and the second is the serious one. Tool calls are the agent's working rather than the conversation, so a customer has no use for them. And a tool result is raw text from a database row or a policy document that nothing has sanitised, heading for a browser. The security milestone is where rendering untrusted text is dealt with properly; until then it does not leave the server.
+
+---
+
+### D-105: The status code is decided before the first byte
+
+**Date:** 2026-09-15
+
+**Decision.** Authentication, authorization, validation, and loading the ticket all happen in the handler, before the streaming response is returned. Only the agent run is inside the generator.
+
+**Why.** Once a 200 and the headers have gone out, a refusal cannot become a 403. It can only be an event inside a stream the client already accepted, which every HTTP client in the world will treat as a success. A refused stream has to be a plain 403, and there are tests that assert exactly that for 401, 403, 404, and 422.
+
+**Consequences.** The handler does the work twice over in a sense - it loads the ticket, and the generator loads it again at the end to save it. That is the price of the split, and it is worth paying.
+
+---
+
+### D-106: A streaming handler cannot use the request's database session
+
+**Date:** 2026-09-15
+
+**Decision.** The generator opens its own session to record the outcome when the turn finishes.
+
+**Why.** FastAPI closes a dependency's session when the handler returns, and a streaming handler returns immediately - the generator runs afterwards. Using the request's session inside it would be using a closed session, and the failure would be confusing rather than obvious.
+
+---
+
+### D-107: Every SSE payload is JSON
+
+**Date:** 2026-09-15
+
+**Decision.** The `data:` field always contains a JSON object, even when it holds a single string.
+
+**Why.** A raw newline ends a `data:` field, and model output and customer messages are full of newlines. Sending text directly would split one event into two at the first line break, and the second half would arrive as a malformed event. JSON escapes them, and a test asserts every `data:` line parses.
+
+---
+
+### D-108: Two stream modes, and the saved state wins
+
+**Date:** 2026-09-15
+
+**Decision.** `astream` is called with both `updates` and `messages`. `updates` supplies the category and the tool calls; `messages` supplies the token chunks. When the turn ends, the answer is read back from the checkpoint rather than from the accumulated tokens.
+
+**Why.** Token chunks make the answer appear a word at a time instead of after twenty seconds of nothing, and node updates are what let the customer see that something is happening at all. The final answer comes from the saved state because that is what the conversation actually contains: the tokens are a view of it, and if the two ever disagree the saved one is the truth.
+
+---
+
+### D-109: No keepalive, for now
+
+**Date:** 2026-09-15
+
+**Decision.** No periodic comment line. `X-Accel-Buffering: no` is set, which is a different problem.
+
+**Why.** Sending a keepalive needs a second task racing the real stream, and the gaps here are a model thinking - seconds, not minutes. The complexity is not earned yet. Recorded because the absence is deliberate: a deployment behind a proxy that closes idle connections sooner than a turn takes is exactly when to add it.

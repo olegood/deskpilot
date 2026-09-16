@@ -8,7 +8,7 @@ API will keep them for the process's lifetime.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -143,3 +143,78 @@ async def run_agent(
         classifier=build_chat_model(ModelRole.CLASSIFIER, settings),
     )
     return await run_turn(graph, message, context, thread_id)
+
+
+@dataclass(frozen=True)
+class TurnEvent:
+    """Something worth telling the caller about while a turn is running."""
+
+    # "category", "tool", "token", or "answer".
+    kind: str
+    data: dict[str, Any]
+
+
+async def stream_turn(
+    graph: AgentGraph,
+    message: str,
+    context: AgentContext,
+    thread_id: str,
+) -> AsyncIterator[TurnEvent]:
+    """Run one turn, reporting progress as it happens.
+
+    Two stream modes at once. "updates" says which node ran and what it changed,
+    which is where the category and the tool calls come from. "messages" carries
+    token chunks from the model, which is what makes the answer appear a word at a
+    time instead of all at once after twenty seconds.
+
+    The final answer is also sent whole at the end, so a client that ignored the
+    tokens still gets it.
+    """
+    question = HumanMessage(message, id=f"turn-{uuid.uuid4()}")
+    turn: AgentState = {
+        "messages": [question],
+        "steps": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "escalated": False,
+    }
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    answer = ""
+
+    async for mode, payload in graph.astream(
+        turn, config=config, context=context, stream_mode=["updates", "messages"]
+    ):
+        if mode == "messages" and isinstance(payload, tuple):
+            chunk, metadata = payload
+            # Only the agent node's text. Tool results arrive here too, and they
+            # are not something the customer is being shown.
+            if metadata.get("langgraph_node") == "agent" and isinstance(chunk, AIMessage):
+                text = chunk.text
+                if text:
+                    answer += text
+                    yield TurnEvent("token", {"text": text})
+        elif mode == "updates" and isinstance(payload, dict):
+            for node, update in payload.items():
+                if not isinstance(update, dict):
+                    continue
+                if node == "classify" and update.get("category"):
+                    yield TurnEvent("category", {"category": update["category"]})
+                for produced in update.get("messages", []):
+                    if isinstance(produced, AIMessage):
+                        for call in produced.tool_calls:
+                            yield TurnEvent("tool", {"name": call["name"]})
+
+    saved = await graph.aget_state(config)
+    values: dict[str, Any] = dict(saved.values)
+    messages = list(values["messages"])
+    final = final_answer(messages_since(messages, str(question.id)))
+    yield TurnEvent(
+        "answer",
+        {
+            # The accumulated tokens and the saved state should agree; the saved
+            # state wins, because that is what the conversation actually contains.
+            "answer": final or answer,
+            "escalated": values["escalated"],
+            "category": values.get("category"),
+        },
+    )

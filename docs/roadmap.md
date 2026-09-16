@@ -57,7 +57,7 @@ Each milestone ends with something runnable, tested, and documented.
 
 - [x] **5.1 The API and authentication over HTTP.** A FastAPI app, security headers, CORS, one error shape, the access token in the body and the refresh token in an httpOnly cookie, CSRF on refresh, rate limiting by source address, and `deskpilot serve`.
 - [x] **5.2 Ticket endpoints.** Opening, replying, listing and reading, each asking the same policy engine the tools ask, with the agent graph built once for the process.
-- [ ] **5.3 Streaming.** Agent progress over SSE, with the token in a header.
+- [x] **5.3 Streaming.** Agent progress over SSE: category, tool calls, the answer a token at a time, and the ticket saved when the stream finishes.
 - [ ] **5.4 The React shell.** Vite, a generated typed client, login and the customer portal.
 - [ ] **5.5 Wrap-up.** Docs pass and a demo.
 

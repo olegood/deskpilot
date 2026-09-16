@@ -7,11 +7,14 @@ one definition of who may read a ticket rather than one per entry point.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
 
 from fastapi import APIRouter, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from deskpilot.api import sse
 from deskpilot.api.deps import (
     Agent,
     AppSettings,
@@ -27,8 +30,14 @@ from deskpilot.authz.principal import Principal
 from deskpilot.db.models import Ticket, TicketCategory, TicketStatus
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.conversation import load_messages, to_turns
-from deskpilot.graph.runner import AgentRun, run_turn
-from deskpilot.tickets import create_ticket, get_ticket, list_tickets, set_status
+from deskpilot.graph.runner import AgentRun, run_turn, stream_turn
+from deskpilot.tickets import (
+    TicketError,
+    create_ticket,
+    get_ticket,
+    list_tickets,
+    set_status,
+)
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
@@ -161,6 +170,102 @@ async def open_ticket(
     )
 
 
+@router.post("/stream")
+async def open_ticket_streaming(
+    body: NewTicket,
+    principal: CurrentPrincipal,
+    db: DbSession,
+    sessions: Sessions,
+    agent: Agent,
+    settings: AppSettings,
+) -> StreamingResponse:
+    """Open a ticket and stream the agent's first answer as it is written."""
+    # Everything that can refuse happens here, before a single byte goes out. Once
+    # the 200 and the headers are sent, a refusal can only be an event inside a
+    # stream the client already accepted.
+    await guard(sessions, principal, Action.TICKET_CREATE, own_scope(principal))
+    ticket = await create_ticket(db, principal.email, body.subject)
+    await db.commit()
+    reference = ticket.reference
+    thread_id = ticket.thread_id
+    return sse.stream(
+        sse.guarded(
+            turn_events(agent, sessions, settings, principal, thread_id, body.message, reference)
+        )
+    )
+
+
+@router.post("/{reference}/replies/stream")
+async def reply_streaming(
+    reference: str,
+    body: Reply,
+    principal: CurrentPrincipal,
+    db: DbSession,
+    sessions: Sessions,
+    agent: Agent,
+    settings: AppSettings,
+) -> StreamingResponse:
+    """Add a message and stream the answer."""
+    ticket = await get_ticket(db, reference, principal.email)
+    await guard(sessions, principal, Action.TICKET_REPLY, as_resource(ticket, principal))
+    if ticket.status is TicketStatus.RESOLVED:
+        raise TicketError(f"{ticket.reference} is resolved; open a new ticket instead")
+    return sse.stream(
+        sse.guarded(
+            turn_events(
+                agent,
+                sessions,
+                settings,
+                principal,
+                ticket.thread_id,
+                body.message,
+                ticket.reference,
+            )
+        )
+    )
+
+
+async def turn_events(
+    agent: Agent,
+    sessions: Sessions,
+    settings: AppSettings,
+    principal: Principal,
+    thread_id: str,
+    message: str,
+    reference: str,
+) -> AsyncIterator[str]:
+    """One agent turn, as a sequence of server-sent events.
+
+    The ticket row is updated at the end, in its own session. The request's session
+    is long gone by the time this runs: FastAPI closes a dependency's session when
+    the handler returns, and a streaming handler returns immediately.
+    """
+    yield sse.event("ticket", {"reference": reference})
+    context = AgentContext(
+        principal=principal,
+        session_factory=sessions,
+        policy_search=settings.policy_search,
+        tools=settings.tools,
+    )
+    final: dict[str, object] = {}
+    async for produced in stream_turn(agent, message, context, thread_id):
+        if produced.kind == "answer":
+            final = dict(produced.data)
+        yield sse.event(produced.kind, produced.data)
+
+    async with sessions() as session:
+        ticket = await get_ticket(session, reference, principal.email)
+        set_status(
+            ticket,
+            TicketStatus.ESCALATED if final.get("escalated") else TicketStatus.AWAITING_CUSTOMER,
+        )
+        category = final.get("category")
+        if isinstance(category, str):
+            ticket.category = TicketCategory(category)
+        await session.commit()
+        yield sse.event("done", {"reference": reference, "status": ticket.status.value})
+
+
 @router.get("", response_model=list[TicketSummary])
 async def my_tickets(
     principal: CurrentPrincipal, db: DbSession, sessions: Sessions
@@ -211,8 +316,6 @@ async def reply_to_ticket(
     ticket = await get_ticket(db, reference, principal.email)
     await guard(sessions, principal, Action.TICKET_REPLY, as_resource(ticket, principal))
     if ticket.status is TicketStatus.RESOLVED:
-        from deskpilot.tickets import TicketError
-
         raise TicketError(f"{ticket.reference} is resolved; open a new ticket instead")
 
     run = await respond(agent, sessions, settings, principal, ticket, body.message)
