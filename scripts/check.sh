@@ -5,20 +5,34 @@
 #   ./scripts/check.sh --all      # also the integration tests (needs Ollama + Postgres)
 set -euo pipefail
 
-cd "$(dirname "$0")/../backend"
+root="$(cd "$(dirname "$0")/.." && pwd)"
 
 run() {
     echo "── $* ──"
     "$@"
 }
 
+cd "$root/backend"
 run uv sync --locked
 run uv run ruff check .
 run uv run ruff format --check .
 run uv run mypy src
 run uv run pytest
 
+if [[ -d "$root/frontend/node_modules" ]]; then
+    cd "$root/frontend"
+    # types first: the generated schema is an input to the type check, and a stale
+    # one hides exactly the drift it exists to catch.
+    run pnpm types
+    run pnpm lint
+    run pnpm exec tsc --noEmit
+    run pnpm test
+else
+    echo "── skipping frontend: run pnpm install in frontend/ ──"
+fi
+
 if [[ "${1:-}" == "--all" ]]; then
+    cd "$root/backend"
     run uv run pytest -m integration
 fi
 

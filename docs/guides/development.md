@@ -38,6 +38,10 @@ deskpilot/
 │       ├── unit/              # fast, no external services
 │       ├── graph/             # the agent loop, driven by a scripted model
 │       └── integration/       # real services, skipped by default
+├── frontend/                  # React + TypeScript (pnpm)
+│   └── src/
+│       ├── api/               # generated types, client, SSE reader
+│       ├── auth/  pages/  components/
 ├── scripts/
 │   └── ollama-serve.sh
 └── docs/

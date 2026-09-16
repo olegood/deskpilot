@@ -1,0 +1,5 @@
+# esbuild ships a prebuilt binary and needs its postinstall script to unpack it.
+# Everything else stays blocked: a postinstall script is arbitrary code from the
+# internet, and pnpm's default of refusing them is the right one.
+allowBuilds:
+  esbuild: true

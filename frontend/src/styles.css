@@ -1,0 +1,82 @@
+:root {
+  --ink: #1b1b1f;
+  --muted: #6a6a75;
+  --line: #e2e2e8;
+  --accent: #2f5d50;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #f7f7f9;
+}
+
+body { margin: 0; }
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+header strong { margin-right: auto; }
+
+main { max-width: 46rem; margin: 1.5rem auto; padding: 0 1rem; }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+h1, h2 { margin-top: 0; font-size: 1.15rem; }
+.subject { color: var(--muted); font-weight: normal; margin-left: 0.5rem; }
+
+form { display: grid; gap: 0.4rem; }
+label { font-size: 0.85rem; color: var(--muted); }
+input, textarea {
+  font: inherit;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+button {
+  justify-self: start;
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: default; }
+
+[role="alert"] { color: #9b2226; }
+
+.tickets, .progress, .conversation { list-style: none; padding: 0; }
+.tickets li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.status, .tag {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #eef1f0;
+  color: var(--muted);
+}
+.status-escalated { background: #fbe9e7; color: #9b2226; }
+
+.progress { color: var(--muted); font-size: 0.9rem; }
+.progress .working { font-style: italic; }
+
+.conversation li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+.conversation strong { font-size: 0.8rem; color: var(--muted); }
+.conversation p { margin: 0.25rem 0 0; white-space: pre-wrap; }
+.conversation .pending p { color: var(--muted); }

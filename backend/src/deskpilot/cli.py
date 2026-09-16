@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator, Callable, Coroutine
@@ -759,6 +760,28 @@ def serve_command(
         port=api.port,
         reload=reload,
     )
+
+
+@app.command("openapi")
+def openapi_command(
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Write here instead of standard output.")
+    ] = None,
+) -> None:
+    """Print the OpenAPI schema.
+
+    The frontend generates its types from this, so the two cannot drift apart: a
+    renamed field becomes a TypeScript error rather than an undefined at runtime.
+    """
+    from deskpilot.api.app import create_app
+
+    schema = json.dumps(create_app().openapi(), indent=2)
+    if out is None:
+        typer.echo(schema)
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(schema + "\n", encoding="utf-8")
+    typer.secho(f"Wrote {out}", fg=typer.colors.GREEN)
 
 
 # ── audit ───────────────────────────────────────────────────────────────────

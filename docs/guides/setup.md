@@ -18,7 +18,12 @@ brew install git uv ollama
 
 Install **Docker Desktop** or **OrbStack** (lighter on macOS). It runs PostgreSQL now and the fake vendors later. In its settings, limit memory to about 6 GB, so the local model has room.
 
-Node.js and pnpm are needed from milestone 5 and will be added to this guide then.
+For the frontend you also need Node and pnpm:
+
+```bash
+brew install node
+npm install -g pnpm
+```
 
 ## 2. Clone the repository
 
@@ -140,12 +145,31 @@ uv run deskpilot ask "How long do I have to return a tent?" \
 
 See the [agent guide](agent.md) for more to try.
 
+## 9. Set up the frontend
+
+```bash
+cd ../frontend
+pnpm install
+pnpm types
+```
+
+`pnpm types` generates TypeScript from the backend's OpenAPI document. It needs
+`src/api/openapi.json`, which the backend writes:
+
+```bash
+cd ../backend && uv run deskpilot openapi --out ../frontend/src/api/openapi.json
+```
+
+See the [frontend guide](frontend.md).
+
 ## What should be running
 
 | Process | Where | How |
 |---|---|---|
 | Ollama | Host, port 11434 | `./scripts/ollama-serve.sh` |
 | PostgreSQL | Docker, port 5432 | `docker compose up -d` |
+| Deskpilot API | Host, port 8000 | `uv run deskpilot serve --reload` |
+| Frontend | Host, port 5173 | `pnpm dev` (in `frontend/`) |
 
 This table grows as later milestones add services.
 

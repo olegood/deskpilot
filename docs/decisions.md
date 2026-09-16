@@ -1195,3 +1195,59 @@ visible instead of hiding it.
 **Decision.** No periodic comment line. `X-Accel-Buffering: no` is set, which is a different problem.
 
 **Why.** Sending a keepalive needs a second task racing the real stream, and the gaps here are a model thinking - seconds, not minutes. The complexity is not earned yet. Recorded because the absence is deliberate: a deployment behind a proxy that closes idle connections sooner than a turn takes is exactly when to add it.
+
+---
+
+### D-110: The frontend's types are generated from the backend's schema
+
+**Date:** 2026-09-16
+
+**Decision.** `deskpilot openapi --out frontend/src/api/openapi.json` writes the schema; `pnpm types` turns it into `schema.d.ts`, which is git-ignored and regenerated. `src/api/types.ts` aliases the few shapes the app uses.
+
+**Why.** A renamed field on the server should be a TypeScript error, not an `undefined` in a browser three weeks later. Hand-written interfaces drift silently, and the drift is only visible to the user.
+
+**Consequences.** `scripts/check.sh` regenerates the types before type-checking, because a stale generated file hides exactly the drift it exists to catch. The alias module keeps the generated paths out of the rest of the code.
+
+---
+
+### D-111: The access token lives in a module variable, not in localStorage
+
+**Date:** 2026-09-16
+
+**Decision.** The token is held in a closure in `api/client.ts`. Nothing writes it to storage.
+
+**Why.** An XSS bug can read `localStorage`; it cannot read a variable it has no reference to. That is a smaller win than it is usually presented as — a script running on the page can call the API directly — but it means the token is not written down somewhere a later bug can find it, and it does not survive the tab.
+
+**Consequences.** A page reload loses it, so the app calls `/refresh` before deciding anybody is signed out, and shows a loading state until that finishes. Skipping that step would sign the user out on every reload.
+
+---
+
+### D-112: A 401 triggers exactly one refresh
+
+**Date:** 2026-09-16
+
+**Decision.** `refreshSession` keeps the in-flight promise in a module variable. Every caller that needs a refresh awaits the same one, and it is cleared in a `finally`.
+
+**Why.** This is the bug the refresh-token design creates for the client. Five requests failing together would become five refreshes, and four of them would present a token the first one had already rotated — which is precisely what the server's reuse detection treats as theft, revoking the family and signing the user out of everything. A test fires three parallel requests and asserts one refresh.
+
+**Consequences.** Clearing in a `finally` matters as much as the single flight: a failed refresh that left the promise in place would wedge every later one. That has its own test.
+
+---
+
+### D-113: The SSE reader is hand-written
+
+**Date:** 2026-09-16
+
+**Decision.** About thirty lines reading the fetch body stream, rather than a dependency.
+
+**Why.** The browser's `EventSource` cannot set an `Authorization` header and cannot POST, and this API needs both. Given that, a library would be wrapping the same loop. The part worth getting right is that a network chunk has no relationship to an event boundary: one event can arrive in three chunks and three in one, so the reader buffers and only emits on a blank line. Tests cover both directions, including a payload containing an escaped newline.
+
+---
+
+### D-114: Model output is rendered as text
+
+**Date:** 2026-09-16
+
+**Decision.** Every message is rendered as a text node. Nothing is parsed as markdown or HTML, and `dangerouslySetInnerHTML` appears nowhere.
+
+**Why.** It is model output, derived from a ticket somebody else wrote. Rendering it as markup is how an image tag pointing at another host turns a conversation into an exfiltration channel. Making it pretty is worth doing after the security milestone has dealt with sanitising untrusted text, and not before.
