@@ -2,7 +2,7 @@
 
 The HTTP layer.
 
-> Last verified against: milestone 5 (complete).
+> Last verified against: milestone 6 (complete).
 
 Everything here is a thin shell over services that already exist and are already
 tested. A route reads the request, calls a service, and shapes the response; the

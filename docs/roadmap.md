@@ -11,7 +11,7 @@ Each milestone ends with something runnable, tested, and documented.
 | 3 | Auth: bcrypt passwords, JWT access and refresh tokens with rotation | **Done** |
 | 4 | ABAC: policy engine, audit log, principal injection into tools | **Done** |
 | 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | **Done** |
-| 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | In progress |
+| 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | **Done** |
 | 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned |
 | 8 | Delegated OAuth: Connections page, PKCE flow, token vault | Planned |
 | 9 | Human-in-the-loop via web: approvals under the reviewer's token, idempotency | Planned |
@@ -66,7 +66,7 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **6.1 The carrier.** A separate service with its own project, secret and data: HMAC-signed requests covering method, path, timestamp, nonce and body digest, replay protection, and chaos knobs for latency, errors and hangs.
 - [x] **6.2 The client.** Signed requests from Deskpilot, a read timeout that survives a hang, retries only for what might succeed later, a per-service circuit breaker, a `track_shipment` tool, and contract tests against the real carrier.
 - [x] **6.3 Webhooks.** ShipTrack calls back when a parcel moves, signed with a separate secret, verified before the body is parsed, replay-protected, and checked end to end against the real carrier.
-- [ ] **6.4 Wrap-up.** Docs pass and a demo.
+- [x] **6.4 Wrap-up.** Fixed the carrier never reaching the API or the evals, added wiring tests, and a docs pass.
 
 ## Post-production backlog
 

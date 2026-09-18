@@ -1471,3 +1471,25 @@ The newlines matter too: concatenating without a separator lets a path ending in
 **Decision.** An integration test runs both applications and posts a real callback from one to the other.
 
 **Why.** ShipTrack signs with its own code and Deskpilot verifies with entirely separate code ([D-122](#d-122-the-client-re-implements-the-signing-scheme)). Neither imports the other, so nothing else can catch the two drifting apart. It is the same argument as the outbound contract test, in the other direction.
+
+---
+
+### D-135: A dependency that must be passed has no default
+
+**Date:** 2026-09-16
+
+**Decision.** `respond` and `turn_events` take `carrier` as a required argument. The API endpoints declare it, and the eval runner builds one.
+
+**Why.** Found in the wrap-up. `carrier: Carrier = None` meant every caller silently got `None`, so `track_shipment` over HTTP reported an outage that was not happening — and the two carrier eval cases would have failed for a reason that had nothing to do with the model. Everything type-checked, every test passed, and the CLI worked, because the CLI was the one caller that did pass it.
+
+**Consequences.** The default was the whole bug. A required argument makes forgetting a type error, which is the only check that would have caught this. `AgentContext.carrier` keeps its `None` default, because "no secret, no carrier" is a real configuration rather than an oversight.
+
+---
+
+### D-136: Some bugs need a test of the wiring, not the behaviour
+
+**Date:** 2026-09-16
+
+**Decision.** `tests/unit/test_carrier_wiring.py` inspects signatures: every endpoint that runs the agent asks for a carrier, and the two helpers have no default.
+
+**Why.** The behaviour of the bug was "reports the carrier as unavailable", which is also exactly what a genuine outage looks like. No behavioural test could tell the two apart without a live carrier, and the point of the carrier tool is that it degrades quietly. When a failure is indistinguishable from a legitimate state, the structure is the only thing left to assert on.

@@ -2,7 +2,7 @@
 
 The React app customers use.
 
-> Last verified against: milestone 5 (complete).
+> Last verified against: milestone 6 (complete).
 
 ## Stack
 

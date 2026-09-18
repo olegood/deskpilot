@@ -2,7 +2,7 @@
 
 The fake companies Deskpilot integrates with.
 
-> Last verified against: milestone 6, step 6.3.
+> Last verified against: milestone 6 (complete).
 
 | Vendor | What it is | Protocol | Authentication |
 |---|---|---|---|

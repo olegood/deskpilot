@@ -28,6 +28,7 @@ from deskpilot.evals.scoring import CaseResult, Summary, crashed, score, summari
 from deskpilot.graph.agent import build_agent_graph
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.runner import run_turn
+from deskpilot.integrations.shiptrack import ShipTrackClient
 from deskpilot.llm import build_chat_model
 from deskpilot.tools import ALL_TOOLS
 
@@ -59,6 +60,7 @@ async def run_case(
     case: EvalCase,
     sessions: async_sessionmaker[AsyncSession],
     settings: Settings,
+    carrier: ShipTrackClient | None = None,
 ) -> CaseResult:
     """Run one case in isolation and score it.
 
@@ -82,6 +84,7 @@ async def run_case(
     context = AgentContext(
         principal=principal,
         session_factory=sessions,
+        carrier=carrier,
         policy_search=settings.policy_search,
         tools=settings.tools,
     )
@@ -106,11 +109,18 @@ async def run_suite(
     """
     limit = asyncio.Semaphore(concurrency)
 
-    async def guarded(case: EvalCase) -> CaseResult:
+    async def guarded(case: EvalCase, carrier: ShipTrackClient | None) -> CaseResult:
         async with limit:
-            return await run_case(case, sessions, settings)
+            return await run_case(case, sessions, settings, carrier)
 
-    results = await asyncio.gather(*(guarded(case) for case in cases))
+    # One carrier for the suite, closed afterwards. Cases that never call it pay
+    # nothing; cases that do would otherwise all report an outage.
+    carrier = ShipTrackClient(settings.shiptrack) if settings.shiptrack.secret else None
+    try:
+        results = await asyncio.gather(*(guarded(case, carrier) for case in cases))
+    finally:
+        if carrier is not None:
+            await carrier.aclose()
     ordered = sorted(results, key=lambda result: [case.id for case in cases].index(result.case_id))
     return Report(
         results=ordered,

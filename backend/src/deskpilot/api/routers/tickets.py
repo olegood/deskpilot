@@ -32,6 +32,7 @@ from deskpilot.db.models import Ticket, TicketCategory, TicketStatus
 from deskpilot.graph.context import AgentContext
 from deskpilot.graph.conversation import load_messages, to_turns
 from deskpilot.graph.runner import AgentRun, run_turn, stream_turn
+from deskpilot.integrations.shiptrack import ShipTrackClient
 from deskpilot.tickets import (
     TicketError,
     create_ticket,
@@ -121,7 +122,9 @@ async def respond(
     principal: Principal,
     ticket: Ticket,
     message: str,
-    carrier: Carrier = None,
+    # No default. A default here meant every caller silently got None, and the
+    # carrier tool reported an outage that was not happening.
+    carrier: ShipTrackClient | None,
 ) -> AgentRun:
     """Run one agent turn for a ticket and record what it decided.
 
@@ -152,6 +155,7 @@ async def open_ticket(
     sessions: Sessions,
     agent: Agent,
     settings: AppSettings,
+    carrier: Carrier,
 ) -> Answer:
     """Open a ticket and let the agent answer the first message."""
     await guard(
@@ -161,7 +165,7 @@ async def open_ticket(
         own_scope(principal),
     )
     ticket = await create_ticket(db, principal.email, body.subject)
-    run = await respond(agent, sessions, settings, principal, ticket, body.message)
+    run = await respond(agent, sessions, settings, principal, ticket, body.message, carrier)
     record_outcome(ticket, run)
     await db.commit()
     return Answer(
@@ -181,6 +185,7 @@ async def open_ticket_streaming(
     sessions: Sessions,
     agent: Agent,
     settings: AppSettings,
+    carrier: Carrier,
 ) -> StreamingResponse:
     """Open a ticket and stream the agent's first answer as it is written."""
     # Everything that can refuse happens here, before a single byte goes out. Once
@@ -193,7 +198,9 @@ async def open_ticket_streaming(
     thread_id = ticket.thread_id
     return sse.stream(
         sse.guarded(
-            turn_events(agent, sessions, settings, principal, thread_id, body.message, reference)
+            turn_events(
+                agent, sessions, settings, principal, thread_id, body.message, reference, carrier
+            )
         )
     )
 
@@ -207,6 +214,7 @@ async def reply_streaming(
     sessions: Sessions,
     agent: Agent,
     settings: AppSettings,
+    carrier: Carrier,
 ) -> StreamingResponse:
     """Add a message and stream the answer."""
     ticket = await get_ticket(db, reference, principal.email)
@@ -223,6 +231,7 @@ async def reply_streaming(
                 ticket.thread_id,
                 body.message,
                 ticket.reference,
+                carrier,
             )
         )
     )
@@ -236,6 +245,7 @@ async def turn_events(
     thread_id: str,
     message: str,
     reference: str,
+    carrier: ShipTrackClient | None,
 ) -> AsyncIterator[str]:
     """One agent turn, as a sequence of server-sent events.
 
@@ -249,6 +259,7 @@ async def turn_events(
         session_factory=sessions,
         policy_search=settings.policy_search,
         tools=settings.tools,
+        carrier=carrier,
     )
     final: dict[str, object] = {}
     async for produced in stream_turn(agent, message, context, thread_id):
@@ -314,6 +325,7 @@ async def reply_to_ticket(
     sessions: Sessions,
     agent: Agent,
     settings: AppSettings,
+    carrier: Carrier,
 ) -> Answer:
     """Add a message to a ticket and let the agent respond."""
     ticket = await get_ticket(db, reference, principal.email)
@@ -321,7 +333,7 @@ async def reply_to_ticket(
     if ticket.status is TicketStatus.RESOLVED:
         raise TicketError(f"{ticket.reference} is resolved; open a new ticket instead")
 
-    run = await respond(agent, sessions, settings, principal, ticket, body.message)
+    run = await respond(agent, sessions, settings, principal, ticket, body.message, carrier)
     record_outcome(ticket, run)
     await db.commit()
     return Answer(

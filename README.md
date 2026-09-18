@@ -27,12 +27,14 @@ by strangers is the actual work.
 
 ## Status
 
-**Milestones 1 to 5 of 14 complete.** The agent holds a multi-turn conversation
+**Milestones 1 to 6 of 14 complete.** The agent holds a multi-turn conversation
 about a customer's own orders, retrieves the shop's published policies from a vector
 index, labels each ticket, and is measured by a small eval suite. People log in with
 a real password and a real session, every tool asks an attribute-based policy engine
 before it answers, and every refusal is recorded. There is an HTTP API and a React
-app where the answer arrives a word at a time. Everything runs on a local model.
+app where the answer arrives a word at a time, and a separate fake carrier the agent
+calls over signed HTTP — with timeouts, retries and a circuit breaker for when it
+misbehaves on purpose. Everything runs on a local model.
 
 See the [roadmap](docs/roadmap.md) for what's next.
 
@@ -114,6 +116,7 @@ flowchart LR
     API --> PG[("PostgreSQL<br/>+ pgvector")]
     API -- "LLM calls" --> LLM["Ollama / Anthropic"]
     API -- "HMAC-signed REST" --> ST["ShipTrack<br/>(fake carrier)"]
+    ST -- "signed webhooks" --> API
     API -- "MCP + OAuth" --> PW["Paywisp<br/>(fake payments)"]
 ```
 
