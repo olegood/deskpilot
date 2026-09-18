@@ -572,6 +572,21 @@
         }
       }
     },
+    "/api/webhooks/shiptrack": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Shiptrack Callback",
+        "description": "A parcel moved.\n\nVerified before the body is parsed as anything meaningful. Handing unverified\nbytes to a model, or to a database write, is the whole problem with webhooks.",
+        "operationId": "shiptrack_callback_api_webhooks_shiptrack_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [

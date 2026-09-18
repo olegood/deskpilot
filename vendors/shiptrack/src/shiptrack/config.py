@@ -52,4 +52,11 @@ class Settings(BaseSettings):
     # nonce is remembered, so this has to outlast the skew window.
     nonce_capacity: int = Field(default=10_000, gt=0)
 
+    # Where to call back when a parcel moves, and the secret to sign it with.
+    # A different secret from the inbound one on purpose: a leak of the key used
+    # to ask questions should not also let somebody forge answers.
+    webhook_url: str | None = None
+    webhook_secret: SecretStr | None = None
+    webhook_timeout_s: float = Field(default=5.0, gt=0)
+
     chaos: ChaosSettings = ChaosSettings()

@@ -88,6 +88,9 @@ JSON object, and a longer answer means it ignored the schema.
 | `DESKPILOT_SHIPTRACK__READ_TIMEOUT_S` | `8.0` | The number that turns "never answers" into "failed". |
 | `DESKPILOT_SHIPTRACK__RETRIES` | `2` | Attempts after the first, for failures that might not happen again. |
 | `DESKPILOT_SHIPTRACK__BACKOFF_SECONDS` | `0.25` | Base for the exponential backoff. Jittered. |
+| `DESKPILOT_SHIPTRACK__WEBHOOK_SECRET` | unset | The secret the carrier signs its callbacks with. Different from the request secret. Without it, callbacks are refused. |
+| `DESKPILOT_SHIPTRACK__WEBHOOK_MAX_SKEW_SECONDS` | `300` | How far a callback's timestamp may be from ours. |
+| `DESKPILOT_SHIPTRACK__WEBHOOK_NONCE_CAPACITY` | `10000` | Recent callback nonces remembered, for replay protection. |
 | `DESKPILOT_SHIPTRACK__BREAKER_THRESHOLD` | `5` | Consecutive failed calls before the circuit opens. |
 | `DESKPILOT_SHIPTRACK__BREAKER_RESET_SECONDS` | `30.0` | How long before one probe is let through. |
 

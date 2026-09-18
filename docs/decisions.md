@@ -1409,3 +1409,65 @@ The newlines matter too: concatenating without a separator lets a path ending in
 **Why.** Found by the test failing. `ASGITransport` calls the application directly in the same process, and an httpx timeout is a network timeout — there is no socket to give up on, so a handler that sleeps simply sleeps and the client waits with it. The one property that most needed testing was the one the convenient transport could not test.
 
 **Consequences.** The listener releases its handler on teardown through an event. Left to sleep, closing the server waits for it, and the test paid thirty seconds on the way out instead of one and a half.
+
+---
+
+### D-129: Inbound and outbound use different secrets
+
+**Date:** 2026-09-16
+
+**Decision.** The key Deskpilot signs requests with and the key ShipTrack signs callbacks with are two separate values.
+
+**Why.** They are different directions with different blast radii. A leak of the key used to ask questions should not also let somebody forge answers — and answers are the more dangerous half, because a forged callback writes to our database while a forged request only reads from theirs. One key for both means a single leak costs twice. A test asserts the request secret does not work on the callback endpoint.
+
+---
+
+### D-130: A webhook is an unauthenticated POST until it is verified
+
+**Date:** 2026-09-16
+
+**Decision.** The callback endpoint verifies the signature over the raw body before parsing it as anything, and refuses when no secret is configured.
+
+**Why.** This is the direction people forget. A team that signs its outbound requests carefully will often accept a webhook because it arrived at a secret-looking URL — which is a password sitting in every proxy log between the sender and here. Verifying before parsing matters too: handing unverified bytes to a validator, a database write, or a model is the whole problem.
+
+**Consequences.** Tests cover a tampered body signed as a different event, a replay, a stale timestamp, an unknown key, and a signature made for a different path. The body-digest one is the interesting case: sign "in transit", deliver "delivered".
+
+---
+
+### D-131: The carrier is authoritative about parcels, not about orders
+
+**Date:** 2026-09-16
+
+**Decision.** A callback maps a small set of carrier statuses onto order statuses. Anything else leaves the order alone.
+
+**Why.** The carrier knows where a parcel is. It does not know whether an order was cancelled, refunded, or replaced, and a vendor that can set arbitrary states on our records has more authority than the relationship warrants. Mapping a known set is the difference between taking their news and taking their instructions.
+
+---
+
+### D-132: An unknown tracking number is accepted quietly
+
+**Date:** 2026-09-16
+
+**Decision.** A callback for a parcel Deskpilot has no order for returns 204 and does nothing.
+
+**Why.** The carrier has other customers. A 4xx would make it retry something that will never work, which is a queue that grows for ever and an alert somebody eventually mutes.
+
+---
+
+### D-133: Delivery is best effort, and the carrier says so
+
+**Date:** 2026-09-16
+
+**Decision.** ShipTrack logs a failed callback and drops it. It does not retry and does not block.
+
+**Why.** A carrier that retried into a customer that is down would turn one outage into two, and one that blocked on delivery would fall over when its customer did. The webhook is a hint that polling would be worth doing sooner; `track_shipment` is where the truth comes from. A system that treats a webhook as the only source of truth has made its supplier's availability its own.
+
+---
+
+### D-134: The two sides are checked against each other
+
+**Date:** 2026-09-16
+
+**Decision.** An integration test runs both applications and posts a real callback from one to the other.
+
+**Why.** ShipTrack signs with its own code and Deskpilot verifies with entirely separate code ([D-122](#d-122-the-client-re-implements-the-signing-scheme)). Neither imports the other, so nothing else can catch the two drifting apart. It is the same argument as the outbound contract test, in the other direction.

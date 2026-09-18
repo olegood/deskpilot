@@ -2,7 +2,7 @@
 
 The fake companies Deskpilot integrates with.
 
-> Last verified against: milestone 6, step 6.2.
+> Last verified against: milestone 6, step 6.3.
 
 | Vendor | What it is | Protocol | Authentication |
 |---|---|---|---|
@@ -32,6 +32,7 @@ cd vendors/shiptrack && uv run python -m shiptrack
 |---|---|---|
 | `GET` | `/api/health` | Unsigned, so a container healthcheck needs no credential |
 | `GET` | `/api/shipments/{tracking_number}` | Status, destination, and every scan |
+| `POST` | `/api/shipments/{tracking_number}/advance` | Record a scan and fire a callback |
 | `PUT` | `/api/_chaos` | Change how badly it behaves, at runtime |
 
 Its parcels match the tracking numbers on Acme Gear's seeded orders. That is the
@@ -162,6 +163,73 @@ When the carrier is unreachable the tool returns a sentence, not an exception. T
 agent's job at that moment is to say something true to a customer, and "we cannot
 reach the carrier" is true ([D-127](../decisions.md#d-127-a-carrier-failure-is-a-sentence-not-an-exception)).
 
+## Callbacks
+
+When a parcel moves, ShipTrack posts to Deskpilot:
+
+```
+POST /api/webhooks/shiptrack
+{"event": "shipment.updated", "tracking_number": "ST-100042", "status": "delivered", ...}
+```
+
+Signed with the same scheme, in the other direction, and with a **different
+secret**. A leak of the key used to ask questions should not also let somebody
+forge answers — and answers are the more dangerous half, because a forged callback
+writes to our database while a forged request only reads from theirs
+([D-129](../decisions.md#d-129-inbound-and-outbound-use-different-secrets)). A test
+asserts the request secret does not work on the callback endpoint.
+
+### A webhook is an unauthenticated POST until it is verified
+
+This is the direction people forget. A team that signs its outbound requests
+carefully will often accept a webhook because it arrived at a secret-looking URL —
+which is a password sitting in every proxy log between the sender and here
+([D-130](../decisions.md#d-130-a-webhook-is-an-unauthenticated-post-until-it-is-verified)).
+
+The signature is checked over the **raw body, before it is parsed**. Handing
+unverified bytes to a validator, a database write, or a model is the whole problem.
+
+Tested: a tampered body signed as a different event, a replay, a stale timestamp, an
+unknown key, a signature made for a different path, and no signature at all. The
+tampered-body case is the interesting one — sign "in transit", deliver "delivered" —
+and it is the body digest that catches it.
+
+### What a callback is allowed to change
+
+A small map of carrier statuses onto order statuses. Anything else leaves the order
+alone.
+
+The carrier knows where a parcel is. It does not know whether an order was
+cancelled, refunded, or replaced, and a vendor that can set arbitrary states on our
+records has more authority than the relationship warrants
+([D-131](../decisions.md#d-131-the-carrier-is-authoritative-about-parcels-not-about-orders)).
+Every callback is recorded in the audit log: an order changing state with nobody
+asking is exactly the kind of thing somebody will later want to account for.
+
+A callback for a parcel we have no order for returns 204 and does nothing. The
+carrier has other customers, and a 4xx would make it retry something that will never
+work ([D-132](../decisions.md#d-132-an-unknown-tracking-number-is-accepted-quietly)).
+
+### Delivery is best effort
+
+ShipTrack logs a failed callback and drops it. No retries, no blocking. A carrier
+that retried into a customer that is down would turn one outage into two
+([D-133](../decisions.md#d-133-delivery-is-best-effort-and-the-carrier-says-so)).
+
+So the webhook is a **hint** that polling would be worth doing sooner.
+`track_shipment` is where the truth comes from. A system that treats a webhook as
+its only source of truth has made its supplier's availability its own.
+
+### Trying it
+
+```bash
+# with both services running and DESKPILOT_SHIPTRACK__WEBHOOK_SECRET set
+curl -s localhost:8000/api/health
+uv run deskpilot ask "Where is ORD-1042?" --as noah.kim@example.com
+# advance the parcel (signing by hand is fiddly; the test does it properly)
+uv run deskpilot audit tail -n 3
+```
+
 ## Testing a vendor
 
 Each vendor has its own suite, run by `scripts/check.sh` along with everything else:
@@ -182,6 +250,11 @@ running the server logs the traceback. httpx's `ASGITransport` propagates that b
 default, so a test asserting on a 500 gets the original exception instead. The
 fixtures pass `raise_app_exceptions=False`, which is what a real client over a real
 socket sees.
+
+**The two sides are checked against each other.** One test runs both applications
+and posts a real callback from one to the other. ShipTrack signs with its own code
+and Deskpilot verifies with entirely separate code, so nothing else can catch them
+drifting apart ([D-134](../decisions.md#d-134-the-two-sides-are-checked-against-each-other)).
 
 **An in-process transport cannot test a timeout.** `ASGITransport` calls the
 application directly, and an httpx timeout is a *network* timeout — there is no

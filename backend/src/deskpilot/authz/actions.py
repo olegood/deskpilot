@@ -68,3 +68,7 @@ class AuditEvent(StrEnum):
     PASSWORD_CHANGED = "account.password_changed"  # noqa: S105 - an event name
     ACCOUNT_CREATED = "account.created"
     ATTRIBUTES_CHANGED = "account.attributes_changed"
+    # A vendor told us something. Recorded because an order changing state without
+    # anybody asking is exactly the kind of thing somebody will later want to
+    # account for.
+    SHIPMENT_UPDATED = "shipment.updated"

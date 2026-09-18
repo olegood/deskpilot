@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from dataclasses import replace
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -14,7 +15,8 @@ from pydantic import BaseModel
 from shiptrack.auth import REJECTED, AuthFailed, NonceStore, verify
 from shiptrack.chaos import ChaosMonkey
 from shiptrack.config import ChaosSettings, Settings
-from shiptrack.data import SHIPMENTS, Shipment, Status
+from shiptrack.data import SHIPMENTS, Scan, Shipment, Status
+from shiptrack.webhooks import WebhookSender
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,6 +83,51 @@ async def read_shipment(tracking_number: str) -> ShipmentOut:
     return to_out(shipment)
 
 
+class AdvanceRequest(BaseModel):
+    """Move a parcel along, so a delivery can be demonstrated on demand."""
+
+    status: Status
+    location: str = "destination"
+    description: str = "Status updated"
+
+
+@router.post("/api/shipments/{tracking_number}/advance", response_model=ShipmentOut)
+async def advance_shipment(
+    request: Request, tracking_number: str, body: AdvanceRequest
+) -> ShipmentOut:
+    """Record a new scan and tell whoever asked to be told.
+
+    A real carrier does this when a van driver presses a button. Here it is an
+    endpoint, so the webhook path can be exercised without waiting for a parcel.
+    """
+    key = tracking_number.strip().upper()
+    shipment = SHIPMENTS.get(key)
+    if shipment is None:
+        return JSONResponse(  # type: ignore[return-value]
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "No shipment with that tracking number."},
+        )
+
+    updated = replace(
+        shipment,
+        status=body.status,
+        scans=(*shipment.scans, Scan(datetime.now(UTC), body.location, body.description)),
+    )
+    SHIPMENTS[key] = updated
+
+    sender: WebhookSender = request.app.state.webhooks
+    delivered = await sender.send(
+        {
+            "event": "shipment.updated",
+            "tracking_number": key,
+            "status": body.status.value,
+            "occurred_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    logger.info("advanced %s to %s, webhook delivered=%s", key, body.status.value, delivered)
+    return to_out(updated)
+
+
 @router.put("/api/_chaos", response_model=ChaosSettings)
 async def set_chaos(request: Request, settings: ChaosSettings) -> ChaosSettings:
     """Change how badly the carrier behaves, at runtime.
@@ -101,6 +148,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = settings
         app.state.nonces = NonceStore(settings.nonce_capacity)
         app.state.chaos = ChaosMonkey(settings.chaos)
+        app.state.webhooks = WebhookSender(
+            url=settings.webhook_url,
+            secret=(
+                settings.webhook_secret.get_secret_value() if settings.webhook_secret else None
+            ),
+            key_id=settings.key_id,
+            timeout_s=settings.webhook_timeout_s,
+        )
         logger.info("shiptrack ready with %d shipments", len(SHIPMENTS))
         yield
 

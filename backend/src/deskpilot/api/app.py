@@ -10,12 +10,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from deskpilot.api import errors, security
-from deskpilot.api.routers import auth, tickets
+from deskpilot.api.routers import auth, tickets, webhooks
 from deskpilot.config import ModelRole, Settings, get_settings
 from deskpilot.db.checkpointer import open_checkpointer
 from deskpilot.db.session import create_engine, create_session_factory
 from deskpilot.graph.agent import build_agent_graph
 from deskpilot.integrations.shiptrack import ShipTrackClient
+from deskpilot.integrations.shiptrack.inbound import SeenNonces
 from deskpilot.llm import build_chat_model
 from deskpilot.tools import ALL_TOOLS
 
@@ -34,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine = create_engine(settings.database)
         app.state.settings = settings
         app.state.sessions = create_session_factory(engine)
+        app.state.webhook_nonces = SeenNonces(settings.shiptrack.webhook_nonce_capacity)
         app.state.login_limiter = security.LoginRateLimiter(
             settings.api.login_attempts_per_ip, settings.api.login_window_seconds
         )
@@ -84,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     errors.install(app)
     app.include_router(auth.router)
     app.include_router(tickets.router)
+    app.include_router(webhooks.router)
 
     @app.get("/api/health", tags=["meta"])
     async def health() -> dict[str, str]:

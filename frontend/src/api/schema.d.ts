@@ -202,6 +202,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/webhooks/shiptrack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shiptrack Callback
+         * @description A parcel moved.
+         *
+         *     Verified before the body is parsed as anything meaningful. Handing unverified
+         *     bytes to a model, or to a database write, is the whole problem with webhooks.
+         */
+        post: operations["shiptrack_callback_api_webhooks_shiptrack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -704,6 +727,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    shiptrack_callback_api_webhooks_shiptrack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

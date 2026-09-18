@@ -9,18 +9,27 @@ Run with: uv run pytest -m integration
 """
 
 import asyncio
+import hashlib
+import hmac
+import json
 import re
+import time
+import uuid
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from pydantic import AnyHttpUrl
 from shiptrack.app import create_app
 from shiptrack.config import ChaosSettings
 from shiptrack.config import Settings as CarrierSettings
+from sqlalchemy import select as sql_select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deskpilot.config import ShipTrackSettings
+from deskpilot.config import DatabaseSettings, ShipTrackSettings
 from deskpilot.integrations.shiptrack import CarrierError, CarrierUnavailable, ShipTrackClient
 from deskpilot.integrations.shiptrack.breaker import State
 
@@ -42,6 +51,33 @@ def client_settings(**overrides: object) -> ShipTrackSettings:
     if isinstance(overrides.get("base_url"), str):
         overrides["base_url"] = AnyHttpUrl(str(overrides["base_url"]))
     return ShipTrackSettings(**{**defaults, **overrides})  # type: ignore[arg-type]
+
+
+def signed_carrier_headers(path: str, body: bytes = b"") -> dict[str, str]:
+    """Sign a request to the carrier, the way the client does."""
+    timestamp = str(int(time.time()))
+    nonce = uuid.uuid4().hex
+    message = "\n".join(["POST", path, timestamp, nonce, hashlib.sha256(body).hexdigest()])
+    return {
+        "X-ShipTrack-Key": "deskpilot",
+        "X-ShipTrack-Timestamp": timestamp,
+        "X-ShipTrack-Nonce": nonce,
+        "X-ShipTrack-Signature": hmac.new(
+            SECRET.encode(), message.encode(), hashlib.sha256
+        ).hexdigest(),
+    }
+
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://deskpilot",
+        ) as client,
+    ):
+        yield client
 
 
 @pytest.fixture
@@ -237,3 +273,60 @@ def test_nothing_in_deskpilot_imports_the_carrier_package() -> None:
     ]
 
     assert offenders == []
+
+
+# ── the callback, end to end ────────────────────────────────────────────────
+
+
+async def test_the_carriers_callback_is_accepted_by_deskpilot(
+    test_database: DatabaseSettings, seeded_sessions: async_sessionmaker[AsyncSession]
+) -> None:
+    """Both halves of the webhook, talking to each other.
+
+    ShipTrack signs the callback with its own code; Deskpilot verifies it with
+    entirely separate code. Neither imports the other, so this is the only thing
+    that can catch the two drifting apart.
+    """
+    from deskpilot.api.app import create_app as create_deskpilot
+    from deskpilot.config import Settings, ShipTrackSettings
+    from deskpilot.db.models import Order, OrderStatus
+
+    callback_secret = "the-callback-secret"
+    deskpilot_settings = Settings(_env_file=None, database=test_database).model_copy(  # type: ignore[call-arg]
+        update={"shiptrack": ShipTrackSettings(secret=SECRET, webhook_secret=callback_secret)}
+    )
+    deskpilot = create_deskpilot(deskpilot_settings)
+
+    async with app_lifespan(deskpilot) as deskpilot_client:
+        carrier = create_app(
+            CarrierSettings(  # type: ignore[call-arg]
+                _env_file=None,
+                secret=SECRET,
+                webhook_url="http://deskpilot/api/webhooks/shiptrack",
+                webhook_secret=callback_secret,
+            )
+        )
+        async with carrier.router.lifespan_context(carrier):
+            # The carrier posts through a client wired straight into Deskpilot,
+            # which is as close to two processes as one process gets.
+            carrier.state.webhooks._client = deskpilot_client
+            path = f"/api/shipments/{PARCEL}/advance"
+            body = json.dumps({"status": "delivered"}).encode()
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=carrier, raise_app_exceptions=False),
+                base_url="http://carrier",
+            ) as carrier_client:
+                advanced = await carrier_client.post(
+                    path,
+                    content=body,
+                    headers={
+                        **signed_carrier_headers(path, body),
+                        "Content-Type": "application/json",
+                    },
+                )
+
+    assert advanced.status_code == 200
+    async with seeded_sessions() as session:
+        order = await session.scalar(sql_select(Order).where(Order.number == "ORD-1042"))
+    assert order is not None
+    assert order.status is OrderStatus.DELIVERED

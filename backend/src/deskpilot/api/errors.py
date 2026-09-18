@@ -15,6 +15,7 @@ from deskpilot.auth.tokens import TokenError
 from deskpilot.auth.users import AuthError
 from deskpilot.authz.engine import FORBIDDEN, Forbidden
 from deskpilot.db.seed import SeedError
+from deskpilot.integrations.shiptrack.inbound import WebhookRejected
 from deskpilot.tickets import TicketError
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,13 @@ def install(app: FastAPI) -> None:
     async def _forbidden(request: Request, exc: Forbidden) -> JSONResponse:
         # The real reason is already in the audit log. It does not go over the wire.
         return problem(status.HTTP_403_FORBIDDEN, FORBIDDEN)
+
+    @app.exception_handler(WebhookRejected)
+    async def _webhook(request: Request, exc: WebhookRejected) -> JSONResponse:
+        # The real reason goes to the log. A sender that is genuinely ours can see
+        # its own logs; one that is not learns nothing.
+        logger.info("rejected a callback: %s", exc.reason)
+        return problem(status.HTTP_401_UNAUTHORIZED, str(exc))
 
     @app.exception_handler(TicketError)
     async def _ticket(request: Request, exc: TicketError) -> JSONResponse:

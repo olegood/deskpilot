@@ -187,6 +187,14 @@ class ShipTrackSettings(BaseModel):
     retries: int = Field(default=2, ge=0)
     backoff_seconds: float = Field(default=0.25, gt=0)
 
+    # The secret ShipTrack signs its callbacks with. Different from the one we
+    # sign requests with: inbound and outbound are different directions with
+    # different blast radii, and one key for both means a leak costs twice.
+    webhook_secret: SecretStr | None = None
+    # How far a callback's timestamp may be from ours.
+    webhook_max_skew_seconds: int = Field(default=300, gt=0)
+    webhook_nonce_capacity: int = Field(default=10_000, gt=0)
+
     # Consecutive failures before the circuit opens, and how long it stays open.
     breaker_threshold: int = Field(default=5, gt=0)
     breaker_reset_seconds: float = Field(default=30.0, gt=0)

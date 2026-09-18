@@ -37,6 +37,9 @@ services:
       SHIPTRACK_HOST: 0.0.0.0
       SHIPTRACK_SECRET: ${SHIPTRACK_SECRET:?set SHIPTRACK_SECRET in the repo-root .env file}
       # Chaos is off by default. Turn it up to see what the client does about it.
+      # Where to call back when a parcel moves, and a separate secret for it.
+      SHIPTRACK_WEBHOOK_URL: ${SHIPTRACK_WEBHOOK_URL:-}
+      SHIPTRACK_WEBHOOK_SECRET: ${SHIPTRACK_WEBHOOK_SECRET:-}
       SHIPTRACK_CHAOS__LATENCY_MS: ${SHIPTRACK_LATENCY_MS:-0}
       SHIPTRACK_CHAOS__ERROR_RATE: ${SHIPTRACK_ERROR_RATE:-0}
       SHIPTRACK_CHAOS__HANG_RATE: ${SHIPTRACK_HANG_RATE:-0}
