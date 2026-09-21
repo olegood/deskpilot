@@ -1493,3 +1493,101 @@ The newlines matter too: concatenating without a separator lets a path ending in
 **Decision.** `tests/unit/test_carrier_wiring.py` inspects signatures: every endpoint that runs the agent asks for a carrier, and the two helpers have no default.
 
 **Why.** The behaviour of the bug was "reports the carrier as unavailable", which is also exactly what a genuine outage looks like. No behavioural test could tell the two apart without a live carrier, and the point of the carrier tool is that it degrades quietly. When a failure is indistinguishable from a legitimate state, the structure is the only thing left to assert on.
+
+---
+
+### D-137: The authorization server is hand-built on joserfc
+
+**Date:** 2026-09-21
+
+**Decision.** Paywisp's endpoints are written by hand on FastAPI, with `joserfc` for keys, JWKS, and JWT signing. This updates [D-010](#d-010-hand-built-paywisp-authorization-server-with-authlib), which named Authlib.
+
+**Why.** Two things changed underneath D-010. Authlib's own JOSE module now warns on import that it is deprecated in favour of `joserfc`, which is by the same author. And Authlib's OAuth server components integrate with Flask and Django, not Starlette, so using them would have meant writing an adapter to the framework before writing any OAuth. D-010's reason survives intact: the point was that every step of the protocol is visible, and hand-written endpoints show more of it than a library would.
+
+---
+
+### D-138: Paywisp's two services share a project and nothing else
+
+**Date:** 2026-09-21
+
+**Decision.** The authorization server and the MCP server live in one uv project, `vendors/paywisp`, and run as two processes and two containers. The MCP server learns the signing keys only by fetching the JWKS over HTTP.
+
+**Why.** [D-014](#d-014-each-service-is-its-own-uv-project) separates projects by company, and these two belong to the same fictional company, the way two services share a repository inside one. What matters is the boundary between them, and that boundary is the network. Sharing a key in memory would make the Keycloak backlog item a rewrite; fetching it from the JWKS makes it a change of URL.
+
+---
+
+### D-139: Tokens are signed with ES256, so a verifier cannot mint
+
+**Date:** 2026-09-21
+
+**Decision.** Access tokens are signed with an EC P-256 key. Only the public half is published.
+
+**Why.** With a shared HMAC secret, every service that verifies tokens can also forge them, so compromising the least important resource server compromises the authorization server too. With an asymmetric key, the MCP server holds nothing worth stealing. Deskpilot's own tokens use HS256 because the same process issues and checks them ([D-061](#d-061-the-algorithm-is-pinned-at-decode-and-issuer-and-audience-are-checked)); here the issuer and the verifier are different services, which is exactly the case asymmetric signing exists for.
+
+**Consequences.** A contract test asserts the key set contains no private members. Exporting "the key" with a library call that includes `d` is an easy mistake, and it would publish the private key at a well-known URL.
+
+---
+
+### D-140: The agent's client can never be granted write
+
+**Date:** 2026-09-21
+
+**Decision.** Paywisp registers Deskpilot's agent as a client whose allowed scopes are `payments:read` and nothing else. A request for more is refused whole, not trimmed.
+
+**Why.** [D-009](#d-009-two-external-vendors-with-different-protocols-and-authentication) promised that a hijacked agent cannot move money. Deskpilot asking only for read is a promise its own code makes; the authorization server refusing to issue write to this client is a property that holds even if Deskpilot's code is wrong, or its secret leaks. Refusing rather than trimming a mixed request matters too: RFC 6749 allows a server to quietly grant less than was asked, and that hides the misconfiguration until the missing scope is needed.
+
+**Consequences.** A mutation test confirmed it: widening the client's allowance fails two tests, one of them in the contract suite.
+
+---
+
+### D-141: Every token request names its scope and its resource
+
+**Date:** 2026-09-21
+
+**Decision.** A missing `scope` is `invalid_scope`, and a missing, unknown, or repeated `resource` is `invalid_target`.
+
+**Why.** RFC 6749 allows a default scope, and a default grows silently whenever a client's allowance does; an explicit request can be read in a log and argued with. RFC 8707 makes `resource` optional, and a token issued without an audience is accepted by every service that trusts the issuer, so a token leaked from one becomes a key to all of them. MCP's authorization specification requires clients to send it; requiring it here means a client that forgets finds out at once rather than in production. Several resources in one request are refused because a token valid in two places is what an audience exists to prevent.
+
+---
+
+### D-142: An access token says that it is one
+
+**Date:** 2026-09-21
+
+**Decision.** Tokens carry `typ: at+jwt` in the header, following RFC 9068, and the MCP server will require it.
+
+**Why.** An issuer may sign more than one kind of JWT. Without a type, a resource server that checks only the signature, the issuer and the audience can be handed some other document the issuer signed and accept it as an access token. Checking the type is one line, and it closes a class of confusion rather than a single bug.
+
+---
+
+### D-143: The authorization server is tested as a contract
+
+**Date:** 2026-09-21
+
+**Decision.** `vendors/paywisp/tests/contract/` finds every endpoint through the RFC 8414 metadata document, imports nothing from Paywisp, and can be pointed at another server with environment variables. Paywisp's own policy choices are tested separately.
+
+**Why.** The Keycloak backlog item says it will be "validated by rerunning the auth server contract tests", which is only possible if the tests were written as a contract from the start. The line between the two suites is what Deskpilot relies on: a scope beyond the client's ceiling being refused is a requirement of any server; refusing a request that names no scope is a Paywisp preference.
+
+**Consequences.** The contract is written to be fair to a correct server, not to one that resembles Paywisp. The `typ` check is the one most likely to fail against another implementation, and that is a finding rather than a flaw in the test.
+
+---
+
+### D-144: A generated signing key is allowed, and a restart revokes everything
+
+**Date:** 2026-09-21
+
+**Decision.** With no `PAYWISP_SIGNING_KEY`, the server generates one at startup and logs a warning. Empty environment values are treated as unset.
+
+**Why.** It keeps a fresh checkout working with one fewer secret to create, and a restart invalidating every token is a property worth having in a fake vendor rather than a problem. A test states it on purpose, so the behaviour is visible rather than discovered. Treating an empty value as unset matters because Compose passes an unset variable through as an empty string: taken literally, an empty client secret registers a client that anybody can authenticate as with an empty password, and a test asserts it cannot.
+
+---
+
+### D-145: The servers print their own INFO lines
+
+**Date:** 2026-09-21
+
+**Decision.** `deskpilot serve` and both vendors' entry points call `logging.basicConfig` at INFO before starting uvicorn. The other CLI commands do not.
+
+**Why.** Found by running Paywisp as a real process: its "issued payments:read to deskpilot-agent" line never appeared, and neither did anything else below WARNING. uvicorn configures its own loggers and leaves the root logger alone, so an application's INFO lines are dropped and its warnings arrive with no level or source. Deskpilot had the same gap, which matters more there: [D-055](#d-055-every-login-failure-looks-and-costs-the-same), [D-079](#d-079-the-refusal-a-caller-sees-carries-no-reason) and [D-130](#d-130-a-webhook-is-an-unauthenticated-post-until-it-is-verified) all give the caller a flat refusal on the grounds that "the real reason goes to the log", and for the running server that sentence was not true. Authorization decisions were safe in the audit table; a rejected callback's reason existed nowhere.
+
+**Consequences.** The test runs in a subprocess, because pytest installs root handlers and `basicConfig` does nothing once one exists — an in-process test would pass whether the function worked or not. A deliberate mutation confirmed the subprocess version fails when the configuration is removed. Structured logging and tracing remain the observability milestone's job; this only makes the existing lines visible.

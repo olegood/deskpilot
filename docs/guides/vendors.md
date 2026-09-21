@@ -2,12 +2,12 @@
 
 The fake companies Deskpilot integrates with.
 
-> Last verified against: milestone 6 (complete).
+> Last verified against: milestone 7, step 7.1.
 
 | Vendor | What it is | Protocol | Authentication |
 |---|---|---|---|
 | **ShipTrack** | A shipping carrier | REST | HMAC-signed requests |
-| **Paywisp** | A payment processor | MCP | OAuth 2.1 *(not built yet)* |
+| **Paywisp** | A payment processor | MCP *(from 7.2)* | OAuth 2.1 bearer tokens |
 
 Each is a **separate service**: its own uv project, its own container, its own
 settings, its own test suite. Deskpilot reaches them over HTTP and shares nothing
@@ -229,6 +229,119 @@ uv run deskpilot ask "Where is ORD-1042?" --as noah.kim@example.com
 # advance the parcel (signing by hand is fiddly; the test does it properly)
 uv run deskpilot audit tail -n 3
 ```
+
+## Paywisp
+
+Two services, one project:
+
+| Service | Port | What it does |
+|---|---|---|
+| `paywisp.auth_server` | 8200 | Issues access tokens |
+| `paywisp.mcp_server` | 8210 | Holds the payments *(step 7.2)* |
+
+They are separate **processes**, not just separate modules. The MCP server learns the
+signing keys the way any resource server would — by fetching the authorization
+server's JWKS over HTTP — and nothing is shared in memory. That is what keeps
+"replace the authorization server with Keycloak", which is on the backlog, a
+configuration change rather than a rewrite
+([D-138](../decisions.md#d-138-paywisps-two-services-share-a-project-and-nothing-else)).
+
+```bash
+docker compose up -d paywisp-auth
+curl -s localhost:8200/.well-known/oauth-authorization-server | jq
+
+# or, for development
+cd vendors/paywisp && uv run python -m paywisp.auth_server
+```
+
+### The authorization server
+
+| Method | Path | What |
+|---|---|---|
+| `GET` | `/.well-known/oauth-authorization-server` | RFC 8414 metadata: where everything else is |
+| `GET` | `/.well-known/jwks.json` | The public signing key |
+| `POST` | `/oauth/token` | Client credentials only, for now |
+
+Hand-built on `joserfc` rather than Authlib's server components, which only integrate
+with Flask and Django. Authlib's own JOSE module is deprecated in favour of
+`joserfc`, which is by the same author
+([D-137](../decisions.md#d-137-the-authorization-server-is-hand-built-on-joserfc)).
+
+Getting a token looks like this:
+
+```bash
+curl -s -u deskpilot-agent:$PAYWISP_AGENT_CLIENT_SECRET \
+  -d grant_type=client_credentials \
+  -d scope=payments:read \
+  -d resource=http://127.0.0.1:8210/mcp \
+  localhost:8200/oauth/token | jq
+```
+
+### What a token is, and why each part is there
+
+An ES256-signed JWT in the RFC 9068 access token profile:
+
+| Part | Why |
+|---|---|
+| **ES256**, asymmetric | The MCP server can verify a token without being able to mint one. A shared HMAC secret would hand every verifier the power to forge ([D-139](../decisions.md#d-139-tokens-are-signed-with-es256-so-a-verifier-cannot-mint)) |
+| `typ: at+jwt` | Distinguishes an access token from any other JWT this issuer signs ([D-142](../decisions.md#d-142-an-access-token-says-that-it-is-one)) |
+| `aud`, exactly one resource | A token for the MCP server does not work anywhere else |
+| `scope` | Checked per operation by the resource server |
+| `exp`, five minutes | A bearer token cannot be recalled |
+| `kid`, the key's thumbprint | Derived, not chosen, so two keys cannot collide on a name |
+
+### The agent can never be given write
+
+Paywisp registers Deskpilot's agent as a client whose **ceiling** is
+`payments:read`. Asking for `refunds:write` is refused with `invalid_scope` — and so
+is asking for both at once, refused whole rather than trimmed
+([D-140](../decisions.md#d-140-the-agents-client-can-never-be-granted-write)).
+
+That is the difference between a promise and a property. Deskpilot's agent asking
+only for read is a promise. The agent's client being unable to receive write is a
+property of the authorization server, and a leaked agent secret cannot move money.
+
+Every request must also **name its scope and its resource**. No default scope: a
+default grows silently whenever a client's allowance does. No audience-less token:
+one without an `aud` is accepted by every service that trusts the issuer
+([D-141](../decisions.md#d-141-every-token-request-names-its-scope-and-its-resource)).
+
+### Keys
+
+Set `PAYWISP_SIGNING_KEY` to an EC P-256 PEM to keep tokens valid across restarts.
+Without it, a key is generated at startup, logged as a warning, and every earlier
+token stops verifying — which for a fake vendor is acceptable and occasionally
+useful, since a restart revokes everything
+([D-144](../decisions.md#d-144-a-generated-signing-key-is-allowed-and-a-restart-revokes-everything)).
+
+### Contract tests
+
+`vendors/paywisp/tests/contract/` describes what Deskpilot relies on from *any*
+authorization server. Every endpoint is found through the metadata document, and
+nothing there imports Paywisp, so the same tests can be pointed at another server:
+
+```bash
+PAYWISP_CONTRACT_ISSUER=https://keycloak.example/realms/paywisp \
+PAYWISP_CONTRACT_CLIENT_ID=deskpilot-agent \
+PAYWISP_CONTRACT_CLIENT_SECRET=... \
+PAYWISP_CONTRACT_RESOURCE=http://127.0.0.1:8210/mcp \
+uv run pytest tests/contract
+```
+
+That is how the Keycloak backlog item gets validated
+([D-143](../decisions.md#d-143-the-authorization-server-is-tested-as-a-contract)). The
+tests are written to be fair to a server that is correct, not to one that resembles
+Paywisp; whether a particular one passes is what running them finds out. The
+`typ: at+jwt` check is the likeliest to differ, since not every server follows
+RFC 9068.
+
+Paywisp's own policies — no default scope, one resource only — are tested separately
+in `tests/test_auth_server.py`, because they are choices rather than requirements.
+
+One interoperability detail worth remembering for the client side: RFC 6749 says a
+client id and secret are **percent-encoded before** they are joined for Basic auth,
+and Paywisp decodes them. httpx's `BasicAuth` does not encode. Hex secrets never
+notice; a secret containing `%` would.
 
 ## Testing a vendor
 

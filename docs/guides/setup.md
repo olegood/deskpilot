@@ -66,33 +66,49 @@ ollama run qwen3.6:35b "Reply with one word: ready"
 ollama ps                                         # PROCESSOR should say 100% GPU
 ```
 
-## 5. Choose a database password
+## 5. Choose the secrets
 
-Generate a local password:
-
-```bash
-openssl rand -hex 16
-```
-
-Create both `.env` files from their templates, and put the same generated value in each:
+Create both `.env` files from their templates:
 
 ```bash
-cp .env.example .env                  # repo root: set POSTGRES_PASSWORD
-cp backend/.env.example backend/.env  # backend: set DESKPILOT_DATABASE__PASSWORD
+cp .env.example .env                  # repo root: read by Docker Compose
+cp backend/.env.example backend/.env  # backend: read by Deskpilot
 ```
 
-Both files are git-ignored.
+Both are git-ignored. Generate a value for each secret with `openssl rand -hex 32`.
+Several are **shared between the two files**, because they are how Deskpilot and a
+vendor recognise each other, and a mismatch shows up later as a refused signature
+rather than as an error here:
 
-## 6. Start PostgreSQL
+| Repo-root `.env` | `backend/.env` | What it is |
+|---|---|---|
+| `POSTGRES_PASSWORD` | `DESKPILOT_DATABASE__PASSWORD` | The database password |
+| `SHIPTRACK_SECRET` | `DESKPILOT_SHIPTRACK__SECRET` | Deskpilot signs carrier requests with it |
+| `SHIPTRACK_WEBHOOK_SECRET` | `DESKPILOT_SHIPTRACK__WEBHOOK_SECRET` | The carrier signs its callbacks with it |
+| `PAYWISP_AGENT_CLIENT_SECRET` | *(not read by Deskpilot yet)* | The agent's credential at Paywisp |
+
+Each pair must hold the same value, and **no two pairs should share one**. The
+ShipTrack request and callback secrets in particular are separate on purpose: a leak
+of one should not buy the other.
+
+`DESKPILOT_AUTH__JWT_SECRET` in `backend/.env` is Deskpilot's own and pairs with
+nothing. It still needs a real value.
+
+Compose refuses to start at all if a required secret is missing, including
+PostgreSQL, so fill in the repo-root file before the next step.
+
+## 6. Start PostgreSQL and the vendors
 
 From the repo root:
 
 ```bash
 docker compose up -d
-docker compose ps                     # STATUS should show (healthy)
+docker compose ps                     # every STATUS should show (healthy)
 ```
 
-The first start also creates the `deskpilot_test` database used by integration tests.
+That starts PostgreSQL, ShipTrack (the fake carrier) and Paywisp's authorization
+server (the fake payment processor). The first start also creates the
+`deskpilot_test` database used by integration tests.
 
 ## 7. Set up the backend
 
@@ -168,6 +184,8 @@ See the [frontend guide](frontend.md).
 |---|---|---|
 | Ollama | Host, port 11434 | `./scripts/ollama-serve.sh` |
 | PostgreSQL | Docker, port 5432 | `docker compose up -d` |
+| ShipTrack | Docker, port 8100 | `docker compose up -d` |
+| Paywisp authorization server | Docker, port 8200 | `docker compose up -d` |
 | Deskpilot API | Host, port 8000 | `uv run deskpilot serve --reload` |
 | Frontend | Host, port 5173 | `pnpm dev` (in `frontend/`) |
 
@@ -184,6 +202,13 @@ This table grows as later milestones add services.
 **Tests fail with a settings error.** Check your shell for leftover `DESKPILOT_*` variables with `env | grep DESKPILOT`. Unit tests clear these, but integration tests and other commands read them.
 
 **Database errors.** See [troubleshooting in the database guide](database.md#troubleshooting).
+
+**`docker compose up` says a variable is required.** A secret is missing from the
+repo-root `.env`. Compose checks them all before starting anything, which is why
+PostgreSQL does not start either. See step 5.
+
+**The carrier refuses every request, or every callback is rejected.** One side of a
+shared secret does not match the other. See the table in step 5.
 
 **Integration tests say Ollama is not reachable.** Start `./scripts/ollama-serve.sh` and check `DESKPILOT_OLLAMA_BASE_URL` in `backend/.env`.
 

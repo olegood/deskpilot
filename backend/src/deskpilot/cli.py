@@ -137,6 +137,9 @@ async def runtime() -> AsyncIterator[Runtime]:
                 embeddings=build_embeddings(settings),
             )
     finally:
+        # The carrier holds an HTTP connection pool, and every command builds one.
+        if carrier is not None:
+            await carrier.aclose()
         await engine.dispose()
 
 
@@ -752,6 +755,24 @@ def auth_passwd_command(
     typer.secho("Password changed. Existing sessions have been revoked.", fg=typer.colors.GREEN)
 
 
+def configure_server_logging() -> None:
+    """Show Deskpilot's own log lines when running as a server.
+
+    uvicorn configures its own loggers and leaves the root logger alone. Without
+    this, every INFO line from the application was dropped - including the ones
+    several decisions rely on, where a refusal gives the caller a flat message and
+    "the real reason goes to the log" (D-055, D-079, D-130). For the running server,
+    that sentence was not true until this was added (D-145).
+
+    Only for `serve`. The other commands print their own output, and interleaving
+    log lines with a conversation would make both harder to read.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s:     %(name)s: %(message)s",
+    )
+
+
 @app.command("serve")
 def serve_command(
     reload: Annotated[bool, typer.Option("--reload", help="Restart on code changes.")] = False,
@@ -759,6 +780,7 @@ def serve_command(
     """Run the HTTP API."""
     import uvicorn
 
+    configure_server_logging()
     api = get_settings().api
     typer.secho(f"Serving on http://{api.host}:{api.port}", fg=typer.colors.GREEN)
     uvicorn.run(

@@ -1,10 +1,10 @@
-"""Running ShipTrack. `uv run python -m shiptrack`."""
+"""Running the authorization server. `uv run python -m paywisp.auth_server`."""
 
 import logging
 
 import uvicorn
 
-from shiptrack.config import Settings
+from paywisp.auth_server.config import Settings
 
 
 def configure_logging() -> None:
@@ -23,7 +23,12 @@ def configure_logging() -> None:
 def main() -> None:
     configure_logging()
     settings = Settings()
-    uvicorn.run("shiptrack.app:create_app", factory=True, host=settings.host, port=settings.port)
+    uvicorn.run(
+        "paywisp.auth_server.app:create_app",
+        factory=True,
+        host=settings.host,
+        port=settings.port,
+    )
 
 
 if __name__ == "__main__":

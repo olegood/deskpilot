@@ -12,7 +12,7 @@ Each milestone ends with something runnable, tested, and documented.
 | 4 | ABAC: policy engine, audit log, principal injection into tools | **Done** |
 | 5 | Web API and frontend shell: endpoints, SSE streaming, login, customer portal | **Done** |
 | 6 | ShipTrack integration: signed REST client, webhooks, retries, circuit breaker, chaos | **Done** |
-| 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | Planned |
+| 7 | Paywisp MCP: auth server, MCP server, service-account reads, allowlist, schema pinning | In progress |
 | 8 | Delegated OAuth: Connections page, PKCE flow, token vault | Planned |
 | 9 | Human-in-the-loop via web: approvals under the reviewer's token, idempotency | Planned |
 | 10 | Security: injection guard, MCP threats, output sanitization, red-team set | Planned |
@@ -67,6 +67,14 @@ Each milestone ends with something runnable, tested, and documented.
 - [x] **6.2 The client.** Signed requests from Deskpilot, a read timeout that survives a hang, retries only for what might succeed later, a per-service circuit breaker, a `track_shipment` tool, and contract tests against the real carrier.
 - [x] **6.3 Webhooks.** ShipTrack calls back when a parcel moves, signed with a separate secret, verified before the body is parsed, replay-protected, and checked end to end against the real carrier.
 - [x] **6.4 Wrap-up.** Fixed the carrier never reaching the API or the evals, added wiring tests, and a docs pass.
+
+## Milestone 7: the Paywisp integration
+
+- [x] **7.1 The authorization server.** OAuth 2.1 client credentials, RFC 8414 discovery, an ES256 key set, RFC 9068 access tokens bound to one resource, an agent client that can never be granted write, and contract tests that find every endpoint through the metadata.
+- [ ] **7.2 The MCP server.** Payment tools behind scope checks, validating tokens against the JWKS over HTTP, with protected resource metadata.
+- [ ] **7.3 Service-account reads.** Deskpilot's MCP client, the agent's read-only token, and a tool allowlist.
+- [ ] **7.4 Schema pinning.** Tool definitions pinned, so a changed description or schema is refused rather than trusted.
+- [ ] **7.5 Wrap-up.** Docs pass and a demo.
 
 ## Post-production backlog
 
