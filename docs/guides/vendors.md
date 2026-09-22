@@ -237,7 +237,7 @@ Two services, one project:
 | Service | Port | What it does |
 |---|---|---|
 | `paywisp.auth_server` | 8200 | Issues access tokens |
-| `paywisp.mcp_server` | 8210 | Holds the payments *(step 7.2)* |
+| `paywisp.mcp_server` | 8210 | Holds the payments, as MCP tools |
 
 They are separate **processes**, not just separate modules. The MCP server learns the
 signing keys the way any resource server would — by fetching the authorization
@@ -247,11 +247,13 @@ configuration change rather than a rewrite
 ([D-138](../decisions.md#d-138-paywisps-two-services-share-a-project-and-nothing-else)).
 
 ```bash
-docker compose up -d paywisp-auth
+docker compose up -d paywisp-auth paywisp-mcp
 curl -s localhost:8200/.well-known/oauth-authorization-server | jq
+curl -s localhost:8210/.well-known/oauth-protected-resource/mcp | jq
 
-# or, for development
+# or, for development, in two terminals
 cd vendors/paywisp && uv run python -m paywisp.auth_server
+cd vendors/paywisp && uv run python -m paywisp.mcp_server
 ```
 
 ### The authorization server
@@ -342,6 +344,119 @@ One interoperability detail worth remembering for the client side: RFC 6749 says
 client id and secret are **percent-encoded before** they are joined for Basic auth,
 and Paywisp decodes them. httpx's `BasicAuth` does not encode. Hex secrets never
 notice; a secret containing `%` would.
+
+### The MCP server
+
+One endpoint, `POST /mcp`, speaking MCP over streamable HTTP. It is stateless and
+answers in plain JSON: Deskpilot is a server calling a server, with no browser to
+stream to ([D-149](../decisions.md#d-149-a-stateless-json-transport-with-dns-rebinding-protection-always-on)).
+
+| Tool | Scope | What |
+|---|---|---|
+| `get_payment(order_number)` | `payments:read` | Amount, currency, status, what has been refunded and what still can be, the card's brand and last four digits |
+| `issue_refund(order_number, amount_cents, reason, idempotency_key)` | `refunds:write` | Refunds part or all of a captured payment. **Moves money** |
+
+Payments are in memory, one per order in Deskpilot's seed data, for the same
+amounts. A backend test checks that the two agree
+([D-153](../decisions.md#d-153-paywisps-payments-mirror-deskpilots-orders-and-a-test-keeps-them-agreeing)).
+Restarting the container puts every refund back.
+
+Also served, without a token:
+
+| Path | What |
+|---|---|
+| `/.well-known/oauth-protected-resource/mcp` | RFC 9728 metadata: which authorization server issues tokens for this |
+| `/health` | For the container healthcheck |
+
+A request with no token gets a 401 whose `WWW-Authenticate` header points at that
+metadata, which is how an MCP client that knows nothing finds out where to get one.
+
+### Who gets in
+
+Every token is checked, in this order, and the first failure is a 401. The reason
+goes to the MCP server's log, not to the caller.
+
+1. **It is a compact JWS** with `alg: ES256`, `typ: at+jwt`, and a `kid`. The algorithm
+   is pinned, never read from the token, so neither `alg: none` nor an HMAC token
+   signed with the public key gets as far as a signature check.
+2. **Its key is in the JWKS**, fetched over HTTP from the authorization server and
+   cached. An unknown `kid` causes a refetch, at most once a minute, because anyone
+   can invent one. If the key set cannot be fetched, every token is refused
+   ([D-146](../decisions.md#d-146-the-mcp-server-fetches-keys-from-the-jwks-rate-limits-refetches-and-fails-closed)).
+3. **The signature verifies.**
+4. **The claims fit**: `iss` is Paywisp, `aud` is exactly this server, `exp`, `nbf`
+   and `iat` are sensible with 30 seconds' leeway, and `sub` and `client_id` are there.
+5. **The SDK checks the audience again**, from what the verifier reports. That second
+   check was hollow in the first version, and a mutation test found it
+   ([D-147](../decisions.md#d-147-the-verifier-reports-the-tokens-audience-not-the-servers)).
+6. **It has `payments:read`**, or the answer is 403.
+
+Then each tool checks its own scope. The agent's token can *see* `issue_refund` in
+the tool list, because listing is not permission. Calling it returns a tool error,
+"This token does not allow that.", and logs a warning:
+
+```text
+WARNING:     paywisp.mcp_server.server: deskpilot-agent called issue_refund without refunds:write (it has: payments:read)
+```
+
+That line is what a hijacked agent looks like, which is why it is not at INFO
+([D-148](../decisions.md#d-148-the-transport-requires-read-each-tool-checks-the-scope-it-needs)).
+
+The `Host` header must be one of `PAYWISP_MCP_ALLOWED_HOSTS`, whatever address the
+server is bound to. That stops DNS rebinding, and it matters most in a container,
+which binds `0.0.0.0`.
+
+### Refunds are safe to retry
+
+`issue_refund` requires an idempotency key. The same key with the same request
+returns the first refund instead of paying twice, and the same key with a different
+request is refused. Checking the balance and recording the refund happen under one
+lock, so two refunds at the same moment cannot both take the last of it
+([D-150](../decisions.md#d-150-refunds-are-idempotent-by-key-and-check-then-write-happens-under-one-lock)).
+
+### Names and addresses in Compose
+
+Inside Compose the MCP server cannot reach `127.0.0.1:8200`, which is its own
+container. The issuer is still that name, because it is what every token's `iss`
+says and what Deskpilot on the host uses. The key set is fetched from
+`http://paywisp-auth:8200/.well-known/jwks.json` instead, set with
+`PAYWISP_MCP_JWKS_URL`. With it set, the MCP server skips discovery.
+
+The protected resource metadata advertises the issuer with a trailing `/`, because
+the SDK stores it as a pydantic URL. RFC 8414 compares issuers as strings, so
+Deskpilot is configured with the issuer rather than discovering it
+([D-151](../decisions.md#d-151-clients-are-configured-with-the-issuer-rather-than-discovering-it)).
+
+### Merchant-wide, which is why Deskpilot wraps it
+
+Paywisp's token is for Acme Gear, not for one of Acme Gear's customers:
+`payments:read` reads every order's payment. Deskpilot therefore never hands these
+tools to the model. Its own tools call them after checking, through `guard`, that
+the customer owns the order
+([D-152](../decisions.md#d-152-paywisps-tools-will-never-be-handed-to-the-model-as-they-are)).
+That is step 7.3.
+
+### The MCP server's tests
+
+`tests/test_mcp_auth.py` and `tests/test_mcp_tools.py` run both Paywisp
+applications in one process. The MCP server fetches its keys from the real
+authorization server's JWKS through an in-process transport that counts requests,
+so "fetched once" and "made-up key ids cause no refetch" are assertions, not hopes.
+Tokens come from the token endpoint where possible, and are minted by hand only for
+what it would never issue: a write scope, a wrong audience, a JWT that is not an
+access token, or a signature from a stranger's key.
+
+Two details from writing them:
+
+**The MCP app's lifespan must end in the task that started it.** It opens an anyio
+task group, and pytest-asyncio may set a fixture up in one task and tear it down in
+another, which fails with "Attempted to exit cancel scope in a different task". The
+fixture runs the whole stack in a task of its own and tells it when to stop
+(`stack_in_own_task` in `tests/mcp_harness.py`).
+
+**The MCP client needs `httpx2`, not `httpx`.** MCP SDK 2.x moved to the fork, so a
+test builds an `httpx2.AsyncClient` around an `httpx2.ASGITransport` for the MCP
+server, while the authorization server is still reached with plain `httpx`.
 
 ## Testing a vendor
 

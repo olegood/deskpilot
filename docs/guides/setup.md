@@ -106,8 +106,8 @@ docker compose up -d
 docker compose ps                     # every STATUS should show (healthy)
 ```
 
-That starts PostgreSQL, ShipTrack (the fake carrier) and Paywisp's authorization
-server (the fake payment processor). The first start also creates the
+That starts PostgreSQL, ShipTrack (the fake carrier) and Paywisp (the fake payment
+processor), which is two containers: its authorization server and its MCP server. The first start also creates the
 `deskpilot_test` database used by integration tests.
 
 ## 7. Set up the backend
@@ -186,6 +186,7 @@ See the [frontend guide](frontend.md).
 | PostgreSQL | Docker, port 5432 | `docker compose up -d` |
 | ShipTrack | Docker, port 8100 | `docker compose up -d` |
 | Paywisp authorization server | Docker, port 8200 | `docker compose up -d` |
+| Paywisp MCP server | Docker, port 8210 | `docker compose up -d` |
 | Deskpilot API | Host, port 8000 | `uv run deskpilot serve --reload` |
 | Frontend | Host, port 5173 | `pnpm dev` (in `frontend/`) |
 

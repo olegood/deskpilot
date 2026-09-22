@@ -71,7 +71,7 @@ Each milestone ends with something runnable, tested, and documented.
 ## Milestone 7: the Paywisp integration
 
 - [x] **7.1 The authorization server.** OAuth 2.1 client credentials, RFC 8414 discovery, an ES256 key set, RFC 9068 access tokens bound to one resource, an agent client that can never be granted write, and contract tests that find every endpoint through the metadata.
-- [ ] **7.2 The MCP server.** Payment tools behind scope checks, validating tokens against the JWKS over HTTP, with protected resource metadata.
+- [x] **7.2 The MCP server.** `get_payment` and `issue_refund` behind per-tool scope checks, tokens verified against the JWKS over HTTP and refused when it is unreachable, protected resource metadata, idempotent refunds, and a test that keeps Paywisp's payments agreeing with Deskpilot's orders.
 - [ ] **7.3 Service-account reads.** Deskpilot's MCP client, the agent's read-only token, and a tool allowlist.
 - [ ] **7.4 Schema pinning.** Tool definitions pinned, so a changed description or schema is refused rather than trusted.
 - [ ] **7.5 Wrap-up.** Docs pass and a demo.

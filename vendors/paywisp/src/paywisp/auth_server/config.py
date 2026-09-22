@@ -5,12 +5,9 @@ from __future__ import annotations
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# What a token can let its holder do at Paywisp. Read and write are separate scopes,
-# and separate clients are allowed them (see clients.py): the question is not only
-# "what did this client ask for" but "what could it ever be given".
-SCOPE_PAYMENTS_READ = "payments:read"
-SCOPE_REFUNDS_WRITE = "refunds:write"
-ALL_SCOPES = (SCOPE_PAYMENTS_READ, SCOPE_REFUNDS_WRITE)
+from paywisp.scopes import ALL_SCOPES, SCOPE_PAYMENTS_READ, SCOPE_REFUNDS_WRITE
+
+__all__ = ["ALL_SCOPES", "SCOPE_PAYMENTS_READ", "SCOPE_REFUNDS_WRITE", "Settings"]
 
 
 class Settings(BaseSettings):

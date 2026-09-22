@@ -53,7 +53,7 @@ services:
 
   paywisp-auth:
     # A fictional payment processor's OAuth authorization server. Its MCP server
-    # arrives as a second container built from the same image, and learns the
+    # (below) is a second container built from the same image, and learns the
     # signing keys the way any resource server would: from the JWKS, over HTTP.
     build: ./vendors/paywisp
     command: ["uv", "run", "python", "-m", "paywisp.auth_server"]
@@ -69,6 +69,28 @@ services:
       - "127.0.0.1:8200:8200"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/health')\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  paywisp-mcp:
+    # Paywisp's MCP server: the payments API, as tools. Same image, second process.
+    # No depends_on: it fetches keys on the first request, not at start, and until
+    # it can it refuses every token rather than accepting any (fail closed).
+    build: ./vendors/paywisp
+    command: ["uv", "run", "python", "-m", "paywisp.mcp_server"]
+    restart: unless-stopped
+    environment:
+      PAYWISP_MCP_HOST: 0.0.0.0
+      # The name tokens carry is the host-side one, the address this container
+      # can reach is the service name. The two differ only inside Compose.
+      PAYWISP_MCP_ISSUER: http://127.0.0.1:8200
+      PAYWISP_MCP_JWKS_URL: http://paywisp-auth:8200/.well-known/jwks.json
+      PAYWISP_MCP_RESOURCE: http://127.0.0.1:8210/mcp
+    ports:
+      - "127.0.0.1:8210:8210"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8210/health')\""]
       interval: 10s
       timeout: 3s
       retries: 5

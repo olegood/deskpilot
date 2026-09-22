@@ -1,16 +1,16 @@
-"""Running the authorization server. `uv run python -m paywisp.auth_server`."""
+"""Running the MCP server. `uv run python -m paywisp.mcp_server`."""
 
 import uvicorn
 
-from paywisp.auth_server.config import Settings
 from paywisp.logs import configure_logging
+from paywisp.mcp_server.config import Settings
 
 
 def main() -> None:
     configure_logging()
     settings = Settings()
     uvicorn.run(
-        "paywisp.auth_server.app:create_app",
+        "paywisp.mcp_server.server:create_app",
         factory=True,
         host=settings.host,
         port=settings.port,

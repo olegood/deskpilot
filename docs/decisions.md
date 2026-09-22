@@ -1591,3 +1591,99 @@ The newlines matter too: concatenating without a separator lets a path ending in
 **Why.** Found by running Paywisp as a real process: its "issued payments:read to deskpilot-agent" line never appeared, and neither did anything else below WARNING. uvicorn configures its own loggers and leaves the root logger alone, so an application's INFO lines are dropped and its warnings arrive with no level or source. Deskpilot had the same gap, which matters more there: [D-055](#d-055-every-login-failure-looks-and-costs-the-same), [D-079](#d-079-the-refusal-a-caller-sees-carries-no-reason) and [D-130](#d-130-a-webhook-is-an-unauthenticated-post-until-it-is-verified) all give the caller a flat refusal on the grounds that "the real reason goes to the log", and for the running server that sentence was not true. Authorization decisions were safe in the audit table; a rejected callback's reason existed nowhere.
 
 **Consequences.** The test runs in a subprocess, because pytest installs root handlers and `basicConfig` does nothing once one exists — an in-process test would pass whether the function worked or not. A deliberate mutation confirmed the subprocess version fails when the configuration is removed. Structured logging and tracing remain the observability milestone's job; this only makes the existing lines visible.
+
+---
+
+### D-146: The MCP server fetches keys from the JWKS, rate-limits refetches, and fails closed
+
+**Date:** 2026-09-22
+
+**Decision.** Paywisp's MCP server verifies tokens with keys fetched from the authorization server's JWKS over HTTP, found through its RFC 8414 metadata unless `PAYWISP_MCP_JWKS_URL` names the key set directly. Keys are cached. A token with an unknown `kid` triggers one refetch, but never more often than every `jwks_min_refresh_seconds` (60 by default), and concurrent refetches share one request. If the key set cannot be fetched, every token is refused. The algorithm is pinned to ES256 and the header must say `typ: at+jwt` before any key is looked up.
+
+**Why.** Refetching on an unknown `kid` is how a resource server picks up a rotated key without a restart. It is also something any caller can trigger, since a `kid` is just a string in a header the caller writes, so without a floor a stream of invented key ids turns the MCP server into a tool for flooding its own authorization server. Failing open, accepting tokens while the keys are unavailable, would make an outage of the authorization server into an outage of authentication.
+
+**Consequences.** A genuinely rotated key can be refused for up to a minute after rotation. Paywisp publishes one key; a real rotation would publish the new key before signing with it, which removes that window. Tested with a counting transport: made-up key ids cause no refetch, a rotated key causes exactly one.
+
+---
+
+### D-147: The verifier reports the token's audience, not the server's
+
+**Date:** 2026-09-22
+
+**Decision.** The `AccessToken` the verifier hands the MCP SDK carries the token's own `aud` as its `resource`, and `validate_token_resource` is on, so the SDK compares the two. The verifier also checks the audience itself.
+
+**Why.** Found by a mutation test. The first version filled in `resource` with the server's own address, which made the SDK's check compare a value with itself: it passed every token, and with the verifier's audience check deleted, a token minted for another service got in. The comment above the setting said the two checks were defence in depth. Only one of them was checking anything.
+
+**Consequences.** A test switches the verifier's claim checks off and expects a token for another service to be refused anyway. It fails if the second check becomes hollow again. The general lesson is the one D-128 taught about timeouts: a safeguard that has never been seen to catch anything may not be there.
+
+---
+
+### D-148: The transport requires read; each tool checks the scope it needs
+
+**Date:** 2026-09-22
+
+**Decision.** Every request needs a valid token with `payments:read`, which the SDK enforces before any tool is looked up (401 without a token, 403 without the scope). Each tool then checks its own scope. `issue_refund` needs `refunds:write`, and a read-only token calling it gets a tool error, "This token does not allow that.", while the server logs a WARNING naming the client, the tool, and the scopes it had.
+
+**Why.** Listing a tool is not permission to call it. The agent's token can see `issue_refund` in the tool list, and the thing that makes that safe is the check inside the tool, not the listing. A tool error rather than an HTTP 403 keeps the refusal readable to a model, which a transport error is not. The warning matters because a read-only client calling the refund tool is exactly what a hijacked agent looks like, so it should not sit at INFO among routine lines.
+
+**Consequences.** Deskpilot's allowlist in 7.3 keeps `issue_refund` away from the model entirely. That is a second layer, not the one the security rests on: with the allowlist gone, the agent's token still cannot refund (D-140, D-009).
+
+---
+
+### D-149: A stateless JSON transport, with DNS-rebinding protection always on
+
+**Date:** 2026-09-22
+
+**Decision.** The MCP server uses streamable HTTP in stateless mode with plain JSON responses. Host-header checking is on regardless of the bind address, with `PAYWISP_MCP_ALLOWED_HOSTS` defaulting to `127.0.0.1:*` and `localhost:*`, and no browser origins allowed.
+
+**Why.** Deskpilot is a server calling a server. There is no browser to stream to, and a session would only remember what the bearer token already says. The SDK enables rebinding protection automatically only when bound to localhost, but in a container the server binds `0.0.0.0`, which is exactly the situation where a web page could point a name it controls at the port.
+
+**Consequences.** No server-initiated messages and no resumable streams. Neither is needed for request-response tools. Requests with any other `Host` header are refused.
+
+---
+
+### D-150: Refunds are idempotent by key, and check-then-write happens under one lock
+
+**Date:** 2026-09-22
+
+**Decision.** `issue_refund` requires an idempotency key of 16 to 128 characters. The same key with the same order, amount and reason returns the original refund. The same key with a different request is refused. Checking the refundable amount and recording the refund happen under a single lock.
+
+**Why.** A client that timed out cannot know whether its refund landed, so it has to be able to ask again safely. Returning the original refund for a *different* request would silently pay the wrong amount, which is worse than an error. Without the lock, two concurrent refunds can both read the same refundable balance and both succeed. That is the classic double refund, and it takes two requests at the same moment, not a slow database.
+
+**Consequences.** The concurrency test widens the race window by slowing refund-id generation, because without that the window is too short to hit and the test passed with the lock removed. It now fails without it. Milestone 9's human-approved refunds will generate the key once per approval, so a retried approval cannot pay twice.
+
+---
+
+### D-151: Clients are configured with the issuer rather than discovering it
+
+**Date:** 2026-09-22
+
+**Decision.** The MCP server's protected resource metadata (RFC 9728) names its authorization server, but Deskpilot will be configured with Paywisp's issuer directly, not discover it from there. Inside Compose, the MCP server knows the issuer by its host-side name (`http://127.0.0.1:8200`, what every token's `iss` says) and fetches keys from the service name through `PAYWISP_MCP_JWKS_URL`.
+
+**Why.** The SDK stores the issuer as a pydantic URL, which adds a trailing `/` to an empty path, so the metadata advertises `http://127.0.0.1:8200/`. RFC 3986 says that is the same server, but RFC 8414 compares issuers as strings, and a strict client discovering from here would refuse Paywisp's own metadata. Configuring the issuer avoids that, and it is also the safer default: a client that trusts whatever authorization server a resource names can be pointed anywhere by whoever controls the resource.
+
+**Consequences.** Discovery from protected resource metadata belongs with dynamic client registration on the backlog. A test records the trailing slash, so an SDK change shows up there.
+
+---
+
+### D-152: Paywisp's tools will never be handed to the model as they are
+
+**Date:** 2026-09-22
+
+**Decision.** In 7.3, Deskpilot calls Paywisp's MCP tools from inside its own tools, such as a `get_payment` that checks the customer owns the order through `guard` first, the way `track_shipment` does. The model never receives Paywisp's tool definitions directly.
+
+**Why.** Paywisp's token is merchant-wide: `payments:read` can read any order's payment, because Paywisp has no idea which of Acme Gear's customers is asking. Customer isolation is Deskpilot's job (D-002), and it can only be enforced in code Deskpilot owns. Passing Paywisp's `get_payment` straight to the model would let a prompt injection ask about another customer's order and get an answer.
+
+**Consequences.** The "tool allowlist" in 7.3 is a list of Paywisp tools Deskpilot's wrappers may call, not a list of tools shown to the model. Schema pinning in 7.4 protects the same calls: a wrapper written against one schema must not quietly start sending arguments to another.
+
+---
+
+### D-153: Paywisp's payments mirror Deskpilot's orders, and a test keeps them agreeing
+
+**Date:** 2026-09-22
+
+**Decision.** Paywisp's in-memory store is seeded with one payment per seeded Deskpilot order, for the order's total in the customer's region's currency, with a status that fits the order's: pending orders authorised, cancelled ones fully refunded, ORD-1017 partially refunded. A backend unit test compares the two. Paywisp is a dev-only backend dependency, and a test asserts that nothing under `src/deskpilot` imports it.
+
+**Why.** The two seeds live in separate services and neither reads the other, so nothing else would notice them drifting apart, and a payment for the wrong amount would make every refund conversation about that order subtly wrong. The import test keeps the integration honest. Deskpilot reaches Paywisp over MCP with a token, or not at all.
+
+**Consequences.** Adding an order to Deskpilot's seed now means adding its payment to Paywisp's, and the test says so.

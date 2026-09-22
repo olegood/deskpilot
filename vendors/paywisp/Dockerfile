@@ -10,5 +10,5 @@ RUN uv sync --locked --no-install-project --no-dev
 COPY src ./src
 RUN uv sync --locked --no-dev
 
-EXPOSE 8200
+EXPOSE 8200 8210
 CMD ["uv", "run", "python", "-m", "paywisp.auth_server"]
